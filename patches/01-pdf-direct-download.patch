@@ -1,0 +1,70 @@
+diff --git a/composer.json b/composer.json
+--- a/composer.json
++++ b/composer.json
+@@
+     "require": {
+         "php": "^8.3",
++        "barryvdh/laravel-dompdf": "^3.1",
+         "laravel/framework": "^13.8",
+         "laravel/sanctum": "^4.3",
+         "laravel/tinker": "^3.0",
+         "spatie/laravel-permission": "^8.3"
+     },
+
+diff --git a/app/Services/PayslipPdfService.php b/app/Services/PayslipPdfService.php
+new file mode 100644
+--- /dev/null
++++ b/app/Services/PayslipPdfService.php
+@@
++<?php
++
++namespace App\Services;
++
++use App\Models\Payroll;
++use Barryvdh\DomPDF\Facade\Pdf;
++
++class PayslipPdfService
++{
++    public function generate(Payroll $payroll)
++    {
++        $payroll->load([
++            'employee.user',
++            'employee.department',
++            'employee.position',
++            'tenant',
++        ]);
++
++        return Pdf::loadView('pdf.payslip', [
++            'payroll' => $payroll,
++        ])->setPaper('a4', 'portrait');
++    }
++}
++
+
+diff --git a/app/Http/Controllers/Api/PayrollController.php b/app/Http/Controllers/Api/PayrollController.php
+--- a/app/Http/Controllers/Api/PayrollController.php
++++ b/app/Http/Controllers/Api/PayrollController.php
+@@
+ use App\Services\PayslipBuilderService;
++use App\Services\PayslipPdfService;
+@@
+-    public function download(Payroll $payroll)
++    public function download(Payroll $payroll, PayslipPdfService $pdfService)
+     {
+-        return response()->json([
+-            'message' => 'Le bulletin est prêt à être imprimé.',
+-            'payroll' => $payroll->load([
+-                'employee.user',
+-                'employee.department',
+-                'employee.position',
+-                'tenant',
+-            ]),
+-            'format' => 'print',
+-        ]);
++        $pdf = $pdfService->generate($payroll);
++        $employeeName = str($payroll->employee?->full_name ?: 'employe')->slug('-');
++        $filename = 'bulletin-de-paie-' . $employeeName . '-' . $payroll->month . '.pdf';
++
++        return $pdf->download($filename);
+     }
+*** End Patch
