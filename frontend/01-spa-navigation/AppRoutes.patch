@@ -1,0 +1,12 @@
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@
+ import Layout from '../components/common/Layout';
++import SpaNavigationGuard from '../components/common/SpaNavigationGuard';
+@@
+     return (
+         <BrowserRouter>
+             <AuthProvider>
++                <SpaNavigationGuard />
+                 <Routes>
