@@ -1,0 +1,96 @@
+diff --git a/src/pages/payroll/Payrolls.tsx b/src/pages/payroll/Payrolls.tsx
+--- a/src/pages/payroll/Payrolls.tsx
++++ b/src/pages/payroll/Payrolls.tsx
+@@
+-import { buildPayslipHtml } from './paysliptemplate';
+@@
+     const downloadPayslip = async (id: number): Promise<void> => {
+         try {
+-            const response = await axios.get(`/payrolls/${id}/download`);
+-            const payroll: Payroll = response.data.payroll;
+-
+-            const printWindow = window.open('', '_blank', 'width=900,height=1000');
+-            if (!printWindow) {
+-                toast.error('Autorisez les fenêtres contextuelles pour imprimer le bulletin');
+-                return;
+-            }
+-
+-            printWindow.document.write(buildPayslipHtml(payroll));
+-            printWindow.document.close();
+-            printWindow.focus();
+-            
+-            setTimeout(() => {
+-                printWindow.print();
+-            }, 500);
+-        } catch (error) {
++            const response = await axios.get(`/payrolls/${id}/download`, {
++                responseType: 'blob',
++            });
++            const contentType = response.headers['content-type'] || 'application/pdf';
++            const blob = new Blob([response.data], { type: contentType });
++            const url = window.URL.createObjectURL(blob);
++            const link = document.createElement('a');
++            link.href = url;
++            link.download = `bulletin-de-paie-${id}.pdf`;
++            document.body.appendChild(link);
++            link.click();
++            link.remove();
++            window.URL.revokeObjectURL(url);
++        } catch (error: any) {
+             toast.error('Erreur lors de la génération du bulletin');
+         }
+     };
+@@
+                                                 <button
+                                                     onClick={() => downloadPayslip(payroll.id)}
+                                                     className="text-blue-600 hover:text-blue-900 mr-3"
++                                                    title="Télécharger le bulletin PDF"
+                                                 >
+@@
+ diff --git a/src/pages/portal/MyPayslips.tsx b/src/pages/portal/MyPayslips.tsx
+ --- a/src/pages/portal/MyPayslips.tsx
+ +++ b/src/pages/portal/MyPayslips.tsx
+ @@
+-import { buildPayslipHtml } from '../payroll/paysliptemplate';
+@@
+-    const printPayslip = async (id: number): Promise<void> => {
++    const downloadPayslip = async (id: number): Promise<void> => {
+         try {
+-            const response = await portal.payslip(id);
+-            const payroll: Payroll = response.data.payroll;
+-
+-            const printWindow = window.open('', '_blank', 'width=900,height=1000');
+-            if (!printWindow) {
+-                toast.error('Autorisez les fenêtres contextuelles pour imprimer le bulletin');
+-                return;
+-            }
+-
+-            printWindow.document.write(buildPayslipHtml(payroll));
+-            printWindow.document.close();
+-            printWindow.focus();
+-            
+-            setTimeout(() => {
+-                printWindow.print();
+-            }, 500);
+-        } catch (error: any) {
++            const response = await portal.downloadPayslip(id);
++            const blob = new Blob([response.data], { type: 'application/pdf' });
++            const url = window.URL.createObjectURL(blob);
++            const link = document.createElement('a');
++            link.href = url;
++            link.download = `bulletin-de-paie-${id}.pdf`;
++            document.body.appendChild(link);
++            link.click();
++            link.remove();
++            window.URL.revokeObjectURL(url);
++        } catch (error: any) {
+             toast.error(error.response?.data?.message || 'Erreur lors de la génération du bulletin');
+         }
+@@
+-                                onClick={() => printPayslip(payslip.id)}
++                                onClick={() => downloadPayslip(payslip.id)}
+                                 className="p-1 text-primary-600 hover:text-primary-900"
+-                                title="Imprimer / télécharger"
++                                title="Télécharger le bulletin PDF"
+                             >
+*** End Patch
