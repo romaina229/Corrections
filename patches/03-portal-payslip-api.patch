@@ -1,0 +1,45 @@
+diff --git a/app/Http/Controllers/Api/EmployeePortalController.php b/app/Http/Controllers/Api/EmployeePortalController.php
+--- a/app/Http/Controllers/Api/EmployeePortalController.php
++++ b/app/Http/Controllers/Api/EmployeePortalController.php
+@@
+ use App\Services\PayslipPdfService;
+@@
+-    public function payslipShow(Request $request, Payroll $payroll)
++    public function payslipShow(Request $request, Payroll $payroll)
+     {
+@@
+         return response()->json([
+             'payroll' => $payroll->load(['employee.user', 'employee.department', 'employee.position', 'tenant']),
+         ]);
+     }
++
++    public function payslipDownload(Request $request, Payroll $payroll, PayslipPdfService $pdfService)
++    {
++        $employee = $this->currentEmployee($request);
++
++        abort_unless((int) $payroll->employee_id === (int) $employee->id, 403, 'Accès à ce bulletin interdit.');
++
++        $pdf = $pdfService->generate($payroll);
++        $employeeName = str($employee->full_name ?: 'employe')->slug('-');
++        $filename = 'bulletin-de-paie-' . $employeeName . '-' . $payroll->month . '.pdf';
++
++        return $pdf->download($filename);
++    }
+***
+ diff --git a/routes/api.php b/routes/api.php
+ --- a/routes/api.php
+ +++ b/routes/api.php
+ @@
+             Route::get('/payslips', [EmployeePortalController::class, 'payslips']);
+             Route::get('/payslips/{payroll}', [EmployeePortalController::class, 'payslipShow']);
++            Route::get('/payslips/{payroll}/download', [EmployeePortalController::class, 'payslipDownload']);
+***
+ diff --git a/src/api/portal.ts b/src/api/portal.ts
+ --- a/src/api/portal.ts
+ +++ b/src/api/portal.ts
+ @@
+     payslips: (params?: ListParams) => axios.get('/portal/payslips', { params }),
+     payslip: (id: number | string) => axios.get(`/portal/payslips/${id}`),
++    downloadPayslip: (id: number | string) =>
++        axios.get(`/portal/payslips/${id}/download`, { responseType: 'blob' }),
+*** End Patch
