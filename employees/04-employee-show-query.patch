@@ -1,0 +1,109 @@
+diff --git a/src/pages/employees/EmployeeShow.tsx b/src/pages/employees/EmployeeShow.tsx
+--- a/src/pages/employees/EmployeeShow.tsx
++++ b/src/pages/employees/EmployeeShow.tsx
+@@
+-import React, { useState, useEffect } from 'react';
++import React, { useState } from 'react';
+ import { useNavigate, useParams } from 'react-router-dom';
++import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+@@
+ const EmployeeShow: React.FC = () => {
+@@
+-    const [loading, setLoading] = useState<boolean>(true);
+-    const [employee, setEmployee] = useState<Employee | null>(null);
+-    const [history, setHistory] = useState<EmployeeHistory[]>([]);
+-    const [historyLoading, setHistoryLoading] = useState<boolean>(true);
++    const queryClient = useQueryClient();
+@@
+-    useEffect(() => {
+-        fetchEmployee();
+-        fetchHistory();
+-    }, [id]);
+-
+-    const fetchEmployee = async (): Promise<void> => {
+-        try {
+-            const response = await employees.show(Number(id));
+-            setEmployee(response.data.employee);
+-        } catch (error) {
+-            toast.error('Erreur lors du chargement de l\'employé');
+-            navigate('/employees');
+-        } finally {
+-            setLoading(false);
+-        }
+-    };
+-
+-    const fetchHistory = async (): Promise<void> => {
+-        setHistoryLoading(true);
+-        try {
+-            const response = await employees.history.list(Number(id));
+-            setHistory(response.data.data);
+-        } catch (error) {
+-            // Silencieux : l'historique est secondaire par rapport à la fiche.
+-        } finally {
+-            setHistoryLoading(false);
+-        }
+-    };
++    const employeeId = Number(id);
++    const { data: employee, isPending: employeeLoading, isError: employeeError } = useQuery<Employee>({
++        queryKey: ['employee', employeeId],
++        queryFn: async () => (await employees.show(employeeId)).data.employee,
++        enabled: Number.isFinite(employeeId),
++        staleTime: 60_000,
++    });
++    const { data: history = [], isPending: historyLoading } = useQuery<EmployeeHistory[]>({
++        queryKey: ['employee-history', employeeId],
++        queryFn: async () => (await employees.history.list(employeeId)).data.data,
++        enabled: Number.isFinite(employeeId),
++        staleTime: 30_000,
++    });
++
++    const historyMutation = useMutation({
++        mutationFn: (payload: HistoryFormData) => employees.history.create(employeeId, {
++            type: payload.type,
++            title: payload.title,
++            description: payload.description || null,
++            effective_date: payload.effective_date,
++            new_salary: payload.new_salary ? Number(payload.new_salary) : null,
++        }),
++        onSuccess: async () => {
++            setHistoryForm(emptyHistoryForm);
++            setShowHistoryForm(false);
++            await queryClient.invalidateQueries({ queryKey: ['employee-history', employeeId] });
++        },
++        onError: (error: any) => toast.error(error.response?.data?.message || "Erreur lors de l'ajout de l'événement"),
++    });
+@@
+-            await employees.history.create(Number(id), {
+-                type: historyForm.type,
+-                title: historyForm.title,
+-                description: historyForm.description || null,
+-                effective_date: historyForm.effective_date,
+-                new_salary: historyForm.new_salary ? Number(historyForm.new_salary) : null,
+-            });
+-            setHistoryForm(emptyHistoryForm);
+-            setShowHistoryForm(false);
+-            fetchHistory();
++            historyMutation.mutate(historyForm);
+@@
+-        } catch (error: any) {
+-            toast.error(error.response?.data?.message || "Erreur lors de l'ajout de l'événement");
+-        } finally {
+-            setSavingHistory(false);
+-        }
++        } finally {
++            setSavingHistory(false);
++        }
+@@
+-            await employees.history.delete(historyId);
+-            fetchHistory();
++            await employees.history.delete(historyId);
++            await queryClient.invalidateQueries({ queryKey: ['employee-history', employeeId] });
+@@
+-    if (loading) {
++    if (employeeLoading) {
+         return <Loading fullScreen />;
+     }
+ 
+-    if (!employee) {
++    if (employeeError || !employee) {
+*** End Patch
