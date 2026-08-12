@@ -1,0 +1,34 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@
+     "react-hot-toast": "^2.6.0",
++    "qrcode.react": "^4.2.0",
+     "react-router-dom": "^7.18.2",
+***
+
+diff --git a/src/pages/attendance/QRClock.tsx b/src/pages/attendance/QRClock.tsx
+--- a/src/pages/attendance/QRClock.tsx
++++ b/src/pages/attendance/QRClock.tsx
+@@
+ import axios from '../../api/axios';
++import { QRCodeSVG } from 'qrcode.react';
+@@
+-                                        <img
+-                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrCode}`}
+-                                            alt="QR Code"
+-                                            className="mx-auto"
+-                                        />
++                                        <QRCodeSVG
++                                            value={qrCode}
++                                            size={200}
++                                            includeMargin
++                                            level="M"
++                                            aria-label="QR Code de pointage"
++                                        />
+*** End Patch
+
+Notes:
+- Installer la dépendance avec npm install avant build.
+- Le backend continue de générer le jeton et son expiration ; seule la génération graphique est rendue locale.
+- Ne pas transmettre le token à un service QR tiers.
