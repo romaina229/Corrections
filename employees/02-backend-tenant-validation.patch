@@ -1,0 +1,26 @@
+diff --git a/app/Http/Controllers/Api/EmployeeController.php b/app/Http/Controllers/Api/EmployeeController.php
+--- a/app/Http/Controllers/Api/EmployeeController.php
++++ b/app/Http/Controllers/Api/EmployeeController.php
+@@
+             'first_name' => 'required|string|max:255',
+             'last_name' => 'required|string|max:255',
+             'email' => 'required|email|unique:users,email',
+             'phone' => 'nullable|string|max:20',
+-            'department_id' => 'nullable|exists:departments,id',
+-            'position_id' => 'nullable|exists:positions,id',
++            'department_id' => [
++                'nullable',
++                Rule::exists('departments', 'id')
++                    ->where(fn ($q) => $q->where('tenant_id', app('tenant')->id)),
++            ],
++            'position_id' => [
++                'nullable',
++                Rule::exists('positions', 'id')
++                    ->where(fn ($q) => $q->where('tenant_id', app('tenant')->id)),
++            ],
+*** End Patch
+
+Why this matters:
+- The update() method already scopes department_id and position_id to the current tenant.
+- store() did not, so a request could validate an ID belonging to another organization if the identifier existed globally.
+- The correction makes creation and update consistent with tenant isolation.
