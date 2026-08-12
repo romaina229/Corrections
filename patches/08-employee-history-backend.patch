@@ -1,0 +1,40 @@
+diff --git a/app/Http/Controllers/Api/EmployeeHistoryController.php b/app/Http/Controllers/Api/EmployeeHistoryController.php
+index c48fe65..bbd48b9 100644
+--- a/app/Http/Controllers/Api/EmployeeHistoryController.php
++++ b/app/Http/Controllers/Api/EmployeeHistoryController.php
+@@ -19,6 +19,11 @@ class EmployeeHistoryController extends Controller
+      */
+     public function index(Employee $employee)
+     {
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $history = EmployeeHistory::with([
+             'previousDepartment',
+             'newDepartment',
+@@ -43,6 +48,11 @@ public function index(Employee $employee)
+      */
+     public function store(Request $request, Employee $employee, EmployeeHistoryService $historyService)
+     {
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $data = $request->validate([
+             'type' => 'required|in:hire,promotion,transfer,salary_change,title_change,contract_change,suspension,warning,commendation,termination,reinstatement,other',
+             'title' => 'required|string|max:255',
+@@ -77,6 +87,11 @@ public function store(Request $request, Employee $employee, EmployeeHistoryServi
+ 
+     public function destroy(EmployeeHistory $employeeHistory)
+     {
++        abort_unless(
++            (int) $employeeHistory->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $employeeHistory->delete();
+ 
+         return response()->json(['message' => 'Événement de carrière supprimé avec succès']);

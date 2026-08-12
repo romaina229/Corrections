@@ -1,0 +1,462 @@
+diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
+index 77ca595..d6f676b 100644
+--- a/src/components/common/Sidebar.tsx
++++ b/src/components/common/Sidebar.tsx
+@@ -18,6 +18,7 @@ import {
+     BellIcon,
+     TrophyIcon,
+     DocumentCurrencyYenIcon,
++    IdentificationIcon,
+     ChevronLeftIcon,
+     ChevronRightIcon,
+ } from '@heroicons/react/24/outline';
+@@ -89,6 +90,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
+                     icon: UserGroupIcon,
+                     permission: 'view_departments',
+                 },
++                {
++                    name: 'Postes',
++                    href: '/positions',
++                    icon: IdentificationIcon,
++                    permission: 'view_positions',
++                },
+                 {
+                     name: 'Organigramme',
+                     href: '/organigram',
+diff --git a/src/pages/positions/Positions.tsx b/src/pages/positions/Positions.tsx
+new file mode 100644
+index 0000000..9f2db94
+--- /dev/null
++++ b/src/pages/positions/Positions.tsx
+@@ -0,0 +1,411 @@
++import React, { useState, useEffect } from 'react';
++import Card from '../../components/common/Card';
++import Loading from '../../components/common/Loading';
++import { useAuth } from '../../context/AuthContext';
++import type { Position, Department } from '../../types';
++import toast from 'react-hot-toast';
++import axios from '../../api/axios';
++import {
++    PlusIcon,
++    PencilIcon,
++    TrashIcon,
++    BriefcaseIcon,
++    MagnifyingGlassIcon,
++} from '@heroicons/react/24/outline';
++
++interface PositionFormData {
++    title: string;
++    code: string;
++    corps: string;
++    department_id: string;
++    grade: string;
++    min_salary: string;
++    max_salary: string;
++    description: string;
++    is_active: boolean;
++}
++
++const emptyForm: PositionFormData = {
++    title: '',
++    code: '',
++    corps: '',
++    department_id: '',
++    grade: '',
++    min_salary: '',
++    max_salary: '',
++    description: '',
++    is_active: true,
++};
++
++const Positions: React.FC = () => {
++    const { hasPermission } = useAuth();
++    const [loading, setLoading] = useState<boolean>(true);
++    const [positions, setPositions] = useState<Position[]>([]);
++    const [departments, setDepartments] = useState<Department[]>([]);
++    const [search, setSearch] = useState<string>('');
++    const [departmentFilter, setDepartmentFilter] = useState<string>('');
++    const [showForm, setShowForm] = useState<boolean>(false);
++    const [editing, setEditing] = useState<Position | null>(null);
++    const [saving, setSaving] = useState<boolean>(false);
++    const [formData, setFormData] = useState<PositionFormData>(emptyForm);
++
++    useEffect(() => {
++        fetchDepartments();
++    }, []);
++
++    useEffect(() => {
++        const timeout = setTimeout(() => {
++            fetchPositions();
++        }, 300);
++        return () => clearTimeout(timeout);
++        // eslint-disable-next-line react-hooks/exhaustive-deps
++    }, [search, departmentFilter]);
++
++    const fetchDepartments = async (): Promise<void> => {
++        try {
++            const response = await axios.get('/departments');
++            setDepartments(response.data);
++        } catch (error) {
++            // Le filtre département reste secondaire par rapport à la liste des postes.
++        }
++    };
++
++    const fetchPositions = async (): Promise<void> => {
++        setLoading(true);
++        try {
++            const response = await axios.get('/positions', {
++                params: {
++                    search: search || undefined,
++                    department_id: departmentFilter || undefined,
++                    per_page: 100,
++                },
++            });
++            setPositions(response.data.data ?? response.data);
++        } catch (error) {
++            toast.error('Erreur lors du chargement des postes');
++        } finally {
++            setLoading(false);
++        }
++    };
++
++    const resetForm = (): void => {
++        setFormData(emptyForm);
++        setEditing(null);
++        setShowForm(false);
++    };
++
++    const editPosition = (position: Position): void => {
++        setEditing(position);
++        setFormData({
++            title: position.title,
++            code: position.code || '',
++            corps: position.corps || '',
++            department_id: position.department_id ? String(position.department_id) : '',
++            grade: position.grade || '',
++            min_salary: position.min_salary != null ? String(position.min_salary) : '',
++            max_salary: position.max_salary != null ? String(position.max_salary) : '',
++            description: position.description || '',
++            is_active: position.is_active,
++        });
++        setShowForm(true);
++    };
++
++    const handleSubmit = async (e: React.FormEvent): Promise<void> => {
++        e.preventDefault();
++        if (!formData.title) return;
++
++        setSaving(true);
++        try {
++            const payload = {
++                title: formData.title,
++                code: formData.code || null,
++                corps: formData.corps || null,
++                department_id: formData.department_id || null,
++                grade: formData.grade || null,
++                min_salary: formData.min_salary ? Number(formData.min_salary) : null,
++                max_salary: formData.max_salary ? Number(formData.max_salary) : null,
++                description: formData.description || null,
++                is_active: formData.is_active,
++            };
++
++            if (editing) {
++                await axios.put(`/positions/${editing.id}`, payload);
++                toast.success('Poste mis à jour avec succès');
++            } else {
++                await axios.post('/positions', payload);
++                toast.success('Poste créé avec succès');
++            }
++            resetForm();
++            fetchPositions();
++        } catch (error: any) {
++            toast.error(error.response?.data?.message || "Erreur lors de l'enregistrement du poste");
++        } finally {
++            setSaving(false);
++        }
++    };
++
++    const handleDelete = async (id: number): Promise<void> => {
++        if (!confirm('Supprimer ce poste ?')) return;
++        try {
++            await axios.delete(`/positions/${id}`);
++            toast.success('Poste supprimé avec succès');
++            fetchPositions();
++        } catch (error: any) {
++            toast.error(error.response?.data?.message || 'Erreur lors de la suppression du poste');
++        }
++    };
++
++    if (loading && positions.length === 0) {
++        return <Loading fullScreen />;
++    }
++
++    return (
++        <div className="space-y-6">
++            <div className="flex items-center justify-between">
++                <div>
++                    <h1 className="text-2xl font-bold text-gray-900">Postes</h1>
++                    <p className="text-gray-500 mt-1">Référentiel des postes et grilles salariales</p>
++                </div>
++                {hasPermission('create_positions') && (
++                    <button
++                        onClick={() => { setEditing(null); setFormData(emptyForm); setShowForm(true); }}
++                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
++                    >
++                        <PlusIcon className="h-5 w-5 mr-2" />
++                        Nouveau poste
++                    </button>
++                )}
++            </div>
++
++            {/* Filtres */}
++            <Card>
++                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
++                    <div className="relative md:col-span-2">
++                        <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
++                        <input
++                            type="text"
++                            placeholder="Rechercher un poste (titre, code)..."
++                            value={search}
++                            onChange={(e) => setSearch(e.target.value)}
++                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
++                        />
++                    </div>
++                    <select
++                        value={departmentFilter}
++                        onChange={(e) => setDepartmentFilter(e.target.value)}
++                        className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
++                    >
++                        <option value="">Tous les départements</option>
++                        {departments.map((dept) => (
++                            <option key={dept.id} value={dept.id}>{dept.name}</option>
++                        ))}
++                    </select>
++                </div>
++            </Card>
++
++            {/* Formulaire */}
++            {showForm && (
++                <Card>
++                    <form onSubmit={handleSubmit} className="space-y-4">
++                        <h3 className="text-lg font-medium text-gray-900">
++                            {editing ? 'Modifier le poste' : 'Nouveau poste'}
++                        </h3>
++                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Titre du poste *</label>
++                                <input
++                                    type="text"
++                                    required
++                                    value={formData.title}
++                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
++                                    placeholder="Ex: Responsable RH"
++                                    className="field"
++                                />
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Code</label>
++                                <input
++                                    type="text"
++                                    value={formData.code}
++                                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
++                                    placeholder="Ex: RH-001"
++                                    className="field"
++                                />
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Corps de métier</label>
++                                <input
++                                    type="text"
++                                    value={formData.corps}
++                                    onChange={(e) => setFormData({ ...formData, corps: e.target.value })}
++                                    placeholder="Ex: Administratif, Technique..."
++                                    className="field"
++                                />
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Grade / catégorie</label>
++                                <input
++                                    type="text"
++                                    value={formData.grade}
++                                    onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
++                                    placeholder="Ex: Cadre, Agent de maîtrise..."
++                                    className="field"
++                                />
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Département</label>
++                                <select
++                                    value={formData.department_id}
++                                    onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
++                                    className="field"
++                                >
++                                    <option value="">Aucun</option>
++                                    {departments.map((dept) => (
++                                        <option key={dept.id} value={dept.id}>{dept.name}</option>
++                                    ))}
++                                </select>
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700 flex items-center gap-2 mt-6">
++                                    <input
++                                        type="checkbox"
++                                        checked={formData.is_active}
++                                        onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
++                                        className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
++                                    />
++                                    Poste actif
++                                </label>
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Salaire minimum</label>
++                                <input
++                                    type="number"
++                                    min="0"
++                                    value={formData.min_salary}
++                                    onChange={(e) => setFormData({ ...formData, min_salary: e.target.value })}
++                                    className="field"
++                                />
++                            </div>
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Salaire maximum</label>
++                                <input
++                                    type="number"
++                                    min="0"
++                                    value={formData.max_salary}
++                                    onChange={(e) => setFormData({ ...formData, max_salary: e.target.value })}
++                                    className="field"
++                                />
++                            </div>
++                            <div className="md:col-span-2">
++                                <label className="block text-sm font-medium text-gray-700">Description / missions</label>
++                                <textarea
++                                    value={formData.description}
++                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
++                                    rows={3}
++                                    className="field"
++                                />
++                            </div>
++                        </div>
++                        <div className="flex justify-end space-x-3">
++                            <button
++                                type="button"
++                                onClick={resetForm}
++                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
++                            >
++                                Annuler
++                            </button>
++                            <button
++                                type="submit"
++                                disabled={saving}
++                                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
++                            >
++                                {saving ? 'Enregistrement...' : editing ? 'Mettre à jour' : 'Créer'}
++                            </button>
++                        </div>
++                    </form>
++                </Card>
++            )}
++
++            {/* Liste des postes */}
++            <Card>
++                {positions.length > 0 ? (
++                    <div className="overflow-x-auto">
++                        <table className="min-w-full divide-y divide-gray-200">
++                            <thead>
++                                <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
++                                    <th className="px-4 py-3">Poste</th>
++                                    <th className="px-4 py-3">Département</th>
++                                    <th className="px-4 py-3">Grade</th>
++                                    <th className="px-4 py-3">Grille salariale</th>
++                                    <th className="px-4 py-3">Statut</th>
++                                    <th className="px-4 py-3 text-right">Actions</th>
++                                </tr>
++                            </thead>
++                            <tbody className="divide-y divide-gray-100">
++                                {positions.map((position) => (
++                                    <tr key={position.id} className="hover:bg-gray-50">
++                                        <td className="px-4 py-3">
++                                            <div className="flex items-center gap-2">
++                                                <BriefcaseIcon className="h-5 w-5 text-primary-600 shrink-0" />
++                                                <div>
++                                                    <p className="font-medium text-gray-900">{position.title}</p>
++                                                    {position.code && <p className="text-xs text-gray-500">{position.code}</p>}
++                                                </div>
++                                            </div>
++                                        </td>
++                                        <td className="px-4 py-3 text-sm text-gray-600">
++                                            {position.department?.name || '—'}
++                                        </td>
++                                        <td className="px-4 py-3 text-sm text-gray-600">
++                                            {position.grade || '—'}
++                                        </td>
++                                        <td className="px-4 py-3 text-sm text-gray-600">
++                                            {position.min_salary || position.max_salary
++                                                ? `${position.min_salary ? Number(position.min_salary).toLocaleString() : '—'} - ${position.max_salary ? Number(position.max_salary).toLocaleString() : '—'} FCFA`
++                                                : '—'}
++                                        </td>
++                                        <td className="px-4 py-3">
++                                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
++                                                position.is_active
++                                                    ? 'bg-green-100 text-green-800'
++                                                    : 'bg-gray-100 text-gray-600'
++                                            }`}>
++                                                {position.is_active ? 'Actif' : 'Inactif'}
++                                            </span>
++                                        </td>
++                                        <td className="px-4 py-3 text-right">
++                                            <div className="flex justify-end gap-2">
++                                                {hasPermission('edit_positions') && (
++                                                    <button
++                                                        type="button"
++                                                        onClick={() => editPosition(position)}
++                                                        className="p-1 text-blue-600 hover:text-blue-900"
++                                                    >
++                                                        <PencilIcon className="h-4 w-4" />
++                                                    </button>
++                                                )}
++                                                {hasPermission('delete_positions') && (
++                                                    <button
++                                                        type="button"
++                                                        onClick={() => handleDelete(position.id)}
++                                                        className="p-1 text-danger-600 hover:text-danger-900"
++                                                    >
++                                                        <TrashIcon className="h-4 w-4" />
++                                                    </button>
++                                                )}
++                                            </div>
++                                        </td>
++                                    </tr>
++                                ))}
++                            </tbody>
++                        </table>
++                    </div>
++                ) : (
++                    <p className="text-gray-500 text-center py-8">Aucun poste créé</p>
++                )}
++            </Card>
++        </div>
++    );
++};
++
++export default Positions;
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index cd3703e..b8e410c 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -22,6 +22,7 @@ import EmployeeCreate from '../pages/employees/EmployeeCreate';
+ import EmployeeEdit from '../pages/employees/EmployeeEdit';
+ import EmployeeShow from '../pages/employees/EmployeeShow';
+ import Departments from '../pages/departments/Departments';
++import Positions from '../pages/positions/Positions';
+ import Contracts from '../pages/contracts/Contracts';
+ import ContractCreate from '../pages/contracts/ContractCreat';
+ import ContractEdit from '../pages/contracts/ContractEdit';
+@@ -83,6 +84,7 @@ const AppRoutes = () => {
+ 
+                             {/* Départements */}
+                             <Route path="/departments" element={<Departments />} />
++                            <Route path="/positions" element={<Positions />} />
+                             <Route path="/organigram" element={<Organigram />} />
+                             <Route path="/notifications" element={<Notifications />} />
+ 

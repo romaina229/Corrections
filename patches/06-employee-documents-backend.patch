@@ -1,0 +1,40 @@
+diff --git a/app/Http/Controllers/Api/DocumentController.php b/app/Http/Controllers/Api/DocumentController.php
+index 5f5bd07..3e7aad1 100644
+--- a/app/Http/Controllers/Api/DocumentController.php
++++ b/app/Http/Controllers/Api/DocumentController.php
+@@ -13,7 +13,7 @@ class DocumentController extends Controller
+ {
+     public function index(Request $request)
+     {
+-        $query = Document::with(['employee.user']);
++        $query = Document::where('tenant_id', app('tenant')->id)->with(['employee.user']);
+ 
+         if ($request->user()->hasRole('employee') && $request->user()->employee) {
+             $query->where('employee_id', $request->user()->employee->id);
+@@ -122,7 +122,13 @@ public function download(Document $document)
+ 
+     public function employeeDocuments(Employee $employee)
+     {
+-        $documents = Document::where('employee_id', $employee->id)
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        $documents = Document::where('tenant_id', app('tenant')->id)
++            ->where('employee_id', $employee->id)
+             ->orderBy('created_at', 'desc')
+             ->get();
+ 
+@@ -150,6 +156,11 @@ public function types()
+     }
+     private function assertEmployeeAccess(Document $document): void
+     {
++        abort_unless(
++            (int) $document->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $user = request()->user();
+ 
+         if ($user?->hasRole('employee') && (int) $document->employee_id !== (int) $user->employee?->id) {

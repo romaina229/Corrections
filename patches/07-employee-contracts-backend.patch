@@ -1,0 +1,147 @@
+diff --git a/app/Http/Controllers/Api/ContractController.php b/app/Http/Controllers/Api/ContractController.php
+index c6d77bc..ee0dbff 100644
+--- a/app/Http/Controllers/Api/ContractController.php
++++ b/app/Http/Controllers/Api/ContractController.php
+@@ -15,7 +15,8 @@ class ContractController extends Controller
+ {
+     public function index(Request $request)
+     {
+-        $query = Contract::with(['employee.user', 'employee.department']);
++        $query = Contract::where('tenant_id', app('tenant')->id)
++            ->with(['employee.user', 'employee.department']);
+ 
+         if ($request->status) {
+             $query->where('status', $request->status);
+@@ -56,16 +57,27 @@ public function store(Request $request, EmployeeHistoryService $historyService)
+             'currency' => 'required|string|size:3',
+             'benefits' => 'nullable|array',
+             'terms' => 'nullable|string',
++            'contract_file' => 'nullable|file|max:15360|mimes:pdf,jpg,jpeg,png,doc,docx',
+         ]);
+ 
+         // Le contrat actif précédent (s'il existe) sert de référence pour
+         // détecter automatiquement un changement de salaire.
+-        $previousContract = Contract::where('employee_id', $request->employee_id)
++        $previousContract = Contract::where('tenant_id', app('tenant')->id)
++            ->where('employee_id', $request->employee_id)
+             ->where('status', 'active')
+             ->latest('start_date')
+             ->first();
+ 
+-        $contract = Contract::create($request->all());
++        $data = $request->except('contract_file');
++
++        if ($request->hasFile('contract_file')) {
++            $data['contract_file'] = $request->file('contract_file')->store(
++                'contracts/' . app('tenant')->id . '/' . $request->employee_id,
++                'local'
++            );
++        }
++
++        $contract = Contract::create($data);
+ 
+         $employee = Employee::find($request->employee_id);
+ 
+@@ -92,13 +104,44 @@ public function store(Request $request, EmployeeHistoryService $historyService)
+ 
+     public function show(Contract $contract)
+     {
++        abort_unless(
++            (int) $contract->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         return response()->json([
+             'contract' => $contract->load(['employee.user', 'employee.department'])
+         ]);
+     }
+ 
++    public function download(Contract $contract)
++    {
++        abort_unless(
++            (int) $contract->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        abort_unless(
++            $contract->contract_file && \Illuminate\Support\Facades\Storage::disk('local')->exists($contract->contract_file),
++            404,
++            'Fichier du contrat introuvable.'
++        );
++
++        $extension = pathinfo($contract->contract_file, PATHINFO_EXTENSION) ?: 'pdf';
++
++        return response()->download(
++            \Illuminate\Support\Facades\Storage::disk('local')->path($contract->contract_file),
++            'contrat-' . $contract->employee_id . '-' . $contract->id . '.' . $extension
++        );
++    }
++
+     public function update(Request $request, Contract $contract, EmployeeHistoryService $historyService)
+     {
++        abort_unless(
++            (int) $contract->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $request->validate([
+             'type' => 'sometimes|in:cdi,cdd,stage,consultant,freelance',
+             'start_date' => 'sometimes|date',
+@@ -109,13 +152,28 @@ public function update(Request $request, Contract $contract, EmployeeHistoryServ
+             'benefits' => 'nullable|array',
+             'terms' => 'nullable|string',
+             'status' => 'sometimes|in:active,expired,terminated,pending',
++            'contract_file' => 'nullable|file|max:15360|mimes:pdf,jpg,jpeg,png,doc,docx',
+         ]);
+ 
+         $previousSalary = (float) $contract->base_salary;
+ 
+-        $contract->update($request->all());
++        $data = $request->except('contract_file');
++        $previousFile = $contract->contract_file;
++
++        if ($request->hasFile('contract_file')) {
++            $data['contract_file'] = $request->file('contract_file')->store(
++                'contracts/' . app('tenant')->id . '/' . $contract->employee_id,
++                'local'
++            );
++        }
++
++        $contract->update($data);
+         $contract->refresh();
+ 
++        if ($request->hasFile('contract_file') && $previousFile) {
++            \Illuminate\Support\Facades\Storage::disk('local')->delete($previousFile);
++        }
++
+         if ($request->has('base_salary') && $contract->employee) {
+             $historyService->logSalaryChange(
+                 $contract->employee,
+@@ -133,6 +191,15 @@ public function update(Request $request, Contract $contract, EmployeeHistoryServ
+ 
+     public function destroy(Contract $contract)
+     {
++        abort_unless(
++            (int) $contract->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        if ($contract->contract_file) {
++            \Illuminate\Support\Facades\Storage::disk('local')->delete($contract->contract_file);
++        }
++
+         $contract->delete();
+ 
+         return response()->json([
+diff --git a/routes/api.php b/routes/api.php
+index 7b2ad38..62027bd 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -91,6 +91,7 @@
+         Route::middleware('permission:view_contracts')->group(function () {
+             Route::get('/contracts', [ContractController::class, 'index']);
+             Route::get('/contracts/{contract}', [ContractController::class, 'show']);
++            Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);
+         });
+         Route::post('/contracts', [ContractController::class, 'store'])->middleware('permission:create_contracts');
+         Route::put('/contracts/{contract}', [ContractController::class, 'update'])->middleware('permission:edit_contracts');

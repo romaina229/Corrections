@@ -1,0 +1,151 @@
+diff --git a/src/pages/employees/EmployeeShow.tsx b/src/pages/employees/EmployeeShow.tsx
+index f56a4a3..20cb1a3 100644
+--- a/src/pages/employees/EmployeeShow.tsx
++++ b/src/pages/employees/EmployeeShow.tsx
+@@ -5,6 +5,8 @@ import Loading from '../../components/common/Loading';
+ import CareerTimeline from '../../components/employees/CareerTimeline';
+ import { employees } from '../../api/employees';
+ import { useAuth } from '../../context/AuthContext';
++import axios from '../../api/axios';
++import toast from 'react-hot-toast';
+ import type { Employee, EmployeeHistory } from '../../types';
+ import {
+     PencilIcon,
+@@ -17,12 +19,9 @@ import {
+     CurrencyDollarIcon,
+     PlusIcon,
+     ClockIcon,
++    ArrowDownTrayIcon as DownloadIcon,
+ } from '@heroicons/react/24/outline';
+ 
+-const toast = {
+-    error: (message: string) => console.error(message),
+-};
+-
+ interface HistoryFormData {
+     type: string;
+     title: string;
+@@ -103,6 +102,42 @@ const EmployeeShow: React.FC = () => {
+         }
+     };
+ 
++    const handleDownloadDocument = async (docId: number, fileName?: string): Promise<void> => {
++        try {
++            const response = await axios.get(`/documents/${docId}/download`, {
++                responseType: 'blob',
++            });
++            const url = window.URL.createObjectURL(new Blob([response.data]));
++            const link = document.createElement('a');
++            link.href = url;
++            link.download = fileName || 'document';
++            document.body.appendChild(link);
++            link.click();
++            link.remove();
++            window.URL.revokeObjectURL(url);
++        } catch (error) {
++            toast.error('Erreur lors du téléchargement du document');
++        }
++    };
++
++    const handleDownloadContract = async (contractId: number, employeeNumber?: string): Promise<void> => {
++        try {
++            const response = await axios.get(`/contracts/${contractId}/download`, {
++                responseType: 'blob',
++            });
++            const url = window.URL.createObjectURL(new Blob([response.data]));
++            const link = document.createElement('a');
++            link.href = url;
++            link.download = `contrat-${employeeNumber || id}-${contractId}.pdf`;
++            document.body.appendChild(link);
++            link.click();
++            link.remove();
++            window.URL.revokeObjectURL(url);
++        } catch (error) {
++            toast.error('Erreur lors du téléchargement du contrat');
++        }
++    };
++
+     const handleDeleteHistory = async (historyId: number): Promise<void> => {
+         if (!confirm('Supprimer cet événement de carrière ?')) return;
+         try {
+@@ -228,10 +263,20 @@ const EmployeeShow: React.FC = () => {
+                     {Array.isArray(employee.documents) && employee.documents.length > 0 ? (
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                             {employee.documents.map((doc) => (
+-                                <div key={doc.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+-                                    <DocumentTextIcon className="h-8 w-8 text-primary-600 mb-2" />
+-                                    <p className="font-medium text-gray-900">{doc.name}</p>
+-                                    <p className="text-sm text-gray-500">{doc.type}</p>
++                                <div key={doc.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow flex items-start justify-between">
++                                    <div>
++                                        <DocumentTextIcon className="h-8 w-8 text-primary-600 mb-2" />
++                                        <p className="font-medium text-gray-900">{doc.name}</p>
++                                        <p className="text-sm text-gray-500">{doc.type}</p>
++                                    </div>
++                                    <button
++                                        type="button"
++                                        onClick={() => handleDownloadDocument(doc.id, doc.file_name || doc.name)}
++                                        className="p-1.5 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded-md"
++                                        title="Télécharger"
++                                    >
++                                        <DownloadIcon className="h-5 w-5" />
++                                    </button>
+                                 </div>
+                             ))}
+                         </div>
+@@ -241,6 +286,55 @@ const EmployeeShow: React.FC = () => {
+                 </Card>
+             </div>
+ 
++            {/* Contrats */}
++            <div>
++                <h2 className="text-lg font-semibold text-gray-900 mb-4">Contrats</h2>
++                <Card>
++                    {Array.isArray(employee.contracts) && employee.contracts.length > 0 ? (
++                        <div className="divide-y divide-gray-100">
++                            {employee.contracts.map((contract) => (
++                                <div key={contract.id} className="py-3 flex items-center justify-between">
++                                    <div className="flex items-center gap-3">
++                                        <DocumentTextIcon className="h-6 w-6 text-primary-600" />
++                                        <div>
++                                            <p className="font-medium text-gray-900 uppercase">
++                                                {contract.type} · {contract.status}
++                                            </p>
++                                            <p className="text-sm text-gray-500">
++                                                {new Date(contract.start_date).toLocaleDateString('fr-FR')}
++                                                {contract.end_date ? ` — ${new Date(contract.end_date).toLocaleDateString('fr-FR')}` : ' — indéterminée'}
++                                                {' · '}{Number(contract.base_salary).toLocaleString()} {contract.currency}
++                                            </p>
++                                        </div>
++                                    </div>
++                                    <div className="flex items-center gap-2">
++                                        {contract.contract_file && (
++                                            <button
++                                                type="button"
++                                                onClick={() => handleDownloadContract(contract.id, employee.employee_number)}
++                                                className="p-1.5 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded-md"
++                                                title="Télécharger le contrat"
++                                            >
++                                                <DownloadIcon className="h-5 w-5" />
++                                            </button>
++                                        )}
++                                        <button
++                                            type="button"
++                                            onClick={() => navigate(`/contracts/${contract.id}`)}
++                                            className="text-sm font-medium text-primary-600 hover:text-primary-800"
++                                        >
++                                            Voir
++                                        </button>
++                                    </div>
++                                </div>
++                            ))}
++                        </div>
++                    ) : (
++                        <p className="text-gray-500 text-center py-4">Aucun contrat</p>
++                    )}
++                </Card>
++            </div>
++
+             {/* Historique de carrière */}
+             <div>
+                 <div className="flex items-center justify-between mb-4">
