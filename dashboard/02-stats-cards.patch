@@ -1,0 +1,50 @@
+diff --git a/src/components/dashboard/StatsCards.tsx b/src/components/dashboard/StatsCards.tsx
+--- a/src/components/dashboard/StatsCards.tsx
++++ b/src/components/dashboard/StatsCards.tsx
+@@
+ import {
+     UsersIcon,
+     UserGroupIcon,
+     CalendarIcon,
+     CurrencyDollarIcon,
+     ClockIcon,
+     DocumentTextIcon,
++    UserPlusIcon,
++    ExclamationTriangleIcon,
++    UserMinusIcon,
+ } from '@heroicons/react/24/outline';
+@@
+         {
+             title: 'Présents aujourd\'hui',
+             value: stats?.present_today || 0,
+             icon: ClockIcon,
+             color: 'bg-green-50',
+         },
++        {
++            title: 'Absents aujourd\'hui',
++            value: stats?.absent_today || 0,
++            icon: UserMinusIcon,
++            color: 'bg-red-50',
++        },
+         {
+             title: 'Congés en attente',
+             value: stats?.pending_leaves || 0,
+             icon: CalendarIcon,
+             color: 'bg-warning-50',
+         },
++        {
++            title: 'Nouveaux employés',
++            value: stats?.new_hires || 0,
++            icon: UserPlusIcon,
++            color: 'bg-indigo-50',
++        },
++        {
++            title: 'Contrats à échéance',
++            value: stats?.contracts_expiring || 0,
++            icon: ExclamationTriangleIcon,
++            color: 'bg-orange-50',
++        },
+@@
+-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
++        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+*** End Patch
