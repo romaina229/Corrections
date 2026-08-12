@@ -1,0 +1,189 @@
+diff --git a/src/pages/employees/EmployeeExits.tsx b/src/pages/employees/EmployeeExits.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/pages/employees/EmployeeExits.tsx
+@@
++import React, { useEffect, useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import Card from '../../components/common/Card';
++import Loading from '../../components/common/Loading';
++import { employees } from '../../api/employees';
++import type { Employee, PaginatedResponse } from '../../types';
++import toast from 'react-hot-toast';
++import { EyeIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
++
++const EXIT_TYPES: Record<string, string> = {
++    resignation: 'Démission',
++    dismissal: 'Licenciement',
++    contract_end: 'Fin de contrat',
++    retirement: 'Retraite',
++    death: 'Décès',
++    other: 'Autre',
++};
++
++const EmployeeExits: React.FC = () => {
++    const navigate = useNavigate();
++    const [loading, setLoading] = useState(true);
++    const [items, setItems] = useState<Employee[]>([]);
++    const [search, setSearch] = useState('');
++    const [type, setType] = useState('');
++
++    useEffect(() => {
++        const timer = window.setTimeout(async () => {
++            setLoading(true);
++            try {
++                const response = await employees.list({
++                    search,
++                    status: 'terminated',
++                    page: 1,
++                });
++                const data = response.data as PaginatedResponse<Employee>;
++                setItems(data.data);
++            } catch {
++                toast.error('Erreur lors du chargement des sorties');
++            } finally {
++                setLoading(false);
++            }
++        }, 250);
++        return () => window.clearTimeout(timer);
++    }, [search]);
++
++    // Une fois l'endpoint /employees/exits intégré, remplacer la requête
++    // employees.list() par cette URL pour filtrer aussi par type de sortie.
++    void type;
++
++    if (loading && items.length === 0) return <Loading fullScreen />;
++
++    return (
++        <div className="space-y-6">
++            <div>
++                <h1 className="text-2xl font-bold text-gray-900">Sorties employés</h1>
++                <p className="mt-1 text-gray-500">Salariés ayant quitté l’organisation et historique de sortie.</p>
++            </div>
++
++            <Card>
++                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++                    <div className="relative">
++                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
++                        <input
++                            value={search}
++                            onChange={(e) => setSearch(e.target.value)}
++                            placeholder="Rechercher un employé ou matricule..."
++                            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md"
++                        />
++                    </div>
++                    <select
++                        value={type}
++                        onChange={(e) => setType(e.target.value)}
++                        className="px-3 py-2 border border-gray-300 rounded-md"
++                    >
++                        <option value="">Tous les motifs de sortie</option>
++                        {Object.entries(EXIT_TYPES).map(([value, label]) => (
++                            <option key={value} value={value}>{label}</option>
++                        ))}
++                    </select>
++                </div>
++            </Card>
++
++            <Card>
++                <div className="overflow-x-auto">
++                    <table className="min-w-full divide-y divide-gray-200">
++                        <thead>
++                            <tr>
++                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employé</th>
++                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matricule</th>
++                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Département</th>
++                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date de sortie</th>
++                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Motif</th>
++                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
++                            </tr>
++                        </thead>
++                        <tbody className="divide-y divide-gray-200">
++                            {items.map((employee) => (
++                                <tr key={employee.id}>
++                                    <td className="px-4 py-3 font-medium text-gray-900">
++                                        {employee.user?.first_name} {employee.user?.last_name}
++                                    </td>
++                                    <td className="px-4 py-3 text-sm text-gray-600">{employee.employee_number}</td>
++                                    <td className="px-4 py-3 text-sm text-gray-600">{employee.department?.name || '-'}</td>
++                                    <td className="px-4 py-3 text-sm text-gray-600">
++                                        {employee.terminated_at ? new Date(employee.terminated_at).toLocaleDateString('fr-FR') : '-'}
++                                    </td>
++                                    <td className="px-4 py-3 text-sm text-gray-600">
++                                        {EXIT_TYPES[(employee as any).termination_type] || 'Non renseigné'}
++                                    </td>
++                                    <td className="px-4 py-3 text-right">
++                                        <button
++                                            type="button"
++                                            onClick={() => navigate(`/employees/${employee.id}`)}
++                                            className="inline-flex items-center text-primary-600 hover:text-primary-900"
++                                        >
++                                            <EyeIcon className="h-5 w-5 mr-1" />
++                                            Voir
++                                        </button>
++                                    </td>
++                                </tr>
++                            ))}
++                        </tbody>
++                    </table>
++                </div>
++            </Card>
++        </div>
++    );
++};
++
++export default EmployeeExits;
++
++diff --git a/src/types/index.ts b/src/types/index.ts
++@@
++ export interface Employee {
++     // ... champs existants ...
+++    terminated_at?: string | null;
+++    termination_type?: 'resignation' | 'dismissal' | 'contract_end' | 'retirement' | 'death' | 'other' | null;
+++    termination_reason?: string | null;
++ }
++
++diff --git a/src/api/employees.ts b/src/api/employees.ts
++@@
++ export const employees = {
++     // ... méthodes existantes ...
+++    exits: (params?: Record<string, string | number>) => axios.get('/employees/exits', { params }),
+++    terminate: (id: number, payload: {
+++        termination_type: string;
+++        terminated_at: string;
+++        termination_reason?: string;
+++    }) => axios.post(`/employees/${id}/terminate`, payload),
++ };
++
++diff --git a/src/AppRoutes.tsx b/src/AppRoutes.tsx
++@@
+++import EmployeeExits from './pages/employees/EmployeeExits';
++@@
++             <Route path="/employees" element={<Employees />} />
+++            <Route path="/employees/exits" element={<EmployeeExits />} />
++             <Route path="/employees/create" element={<EmployeeCreate />} />
++
++diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
++@@
+++            {
+++                name: 'Sorties employés',
+++                href: '/employees/exits',
+++                icon: ArrowRightOnRectangleIcon,
+++                permission: 'view_employees',
+++            },
++
++diff --git a/src/pages/employees/Employees.tsx b/src/pages/employees/Employees.tsx
++@@
++-                        <button
++-                            onClick={() => handleDelete(employee.id)}
+++                        <button
+++                            type="button"
+++                            onClick={() => navigate(`/employees/${employee.id}/terminate`)}
++                             className="text-danger-600 hover:text-danger-900"
++                         >
++                             <TrashIcon className="h-5 w-5" />
++                         </button>
++@@
++-                            Rechercher un employé...
+++                            Rechercher un employé...
+*** End Patch
