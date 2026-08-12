@@ -1,0 +1,45 @@
+diff --git a/src/pages/employees/Employees.tsx b/src/pages/employees/Employees.tsx
+--- a/src/pages/employees/Employees.tsx
++++ b/src/pages/employees/Employees.tsx
+@@
+-                        <select
++                        <select
+                             name="department_id"
+@@
+-                            <option value="">Tous les départements</option>
++                            <option value="">Tous les départements</option>
++                            {/* Alimenter cette liste depuis GET /departments.
++                                Le code actuel ne fournit aucun choix réel. */}
+@@
+-                        <button
++                        <button
++                            type="button"
+                             onClick={() => navigate(`/employees/${employee.id}`)}
+@@
+-                                            <button
++                                            <button
++                                                type="button"
+                                                 onClick={() => navigate(`/employees/${employee.id}/edit`)}
+@@
+-                                            <button
++                                            <button
++                                                type="button"
+                                                 onClick={() => handleDelete(employee.id)}
+@@
+-                            <button
++                            <button
++                                type="button"
+                                 onClick={() => handlePageChange(pagination.current_page - 1)}
+@@
+-                            <button
++                            <button
++                                type="button"
+                                 onClick={() => handlePageChange(pagination.current_page + 1)}
+@@
+-                                            <button
++                                            <button
++                                                type="button"
+                                                 key={i}
+*** End Patch
+
+Note: the department selector is intentionally not populated with invented data. A dedicated departments API must be wired to it before the correction is considered complete.
