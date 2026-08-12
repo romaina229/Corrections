@@ -4,18 +4,10 @@ diff --git a/src/pages/dashboard/Dashboard.tsx b/src/pages/dashboard/Dashboard.t
 @@
 -import React, { useState, useEffect } from 'react';
 +import React from 'react';
- import { useAuth } from '../../context/AuthContext';
- import Loading from '../../components/common/Loading';
- import StatsCards from '../../components/dashboard/StatsCards';
 @@
- import OrganizationBanner from '../../components/dashboard/OrganizationBanner';
- import { dashboard } from '../../api/dashboard';
- import type { DashboardStats } from '../../types';
 -import toast from 'react-hot-toast';
 +import { useQuery } from '@tanstack/react-query';
 @@
--const Dashboard: React.FC = () => {
--    const { user } = useAuth();
 -    const [loading, setLoading] = useState<boolean>(true);
 -    const [data, setData] = useState<DashboardData>({
 -        stats: {} as DashboardStats,
@@ -39,8 +31,6 @@ diff --git a/src/pages/dashboard/Dashboard.tsx b/src/pages/dashboard/Dashboard.t
 -            setLoading(false);
 -        }
 -    };
-+const Dashboard: React.FC = () => {
-+    const { user } = useAuth();
 +    const { data, isPending, isError, refetch } = useQuery<DashboardData>({
 +        queryKey: ['dashboard'],
 +        queryFn: async () => (await dashboard.index()).data,
@@ -50,10 +40,6 @@ diff --git a/src/pages/dashboard/Dashboard.tsx b/src/pages/dashboard/Dashboard.t
 +    });
  
 -    if (loading) {
-+    if (isPending || !data) {
-         return <Loading fullScreen />;
-     }
-+
 +    if (isError) {
 +        return (
 +            <div className="min-h-[50vh] flex items-center justify-center">
@@ -66,4 +52,12 @@ diff --git a/src/pages/dashboard/Dashboard.tsx b/src/pages/dashboard/Dashboard.t
 +            </div>
 +        );
 +    }
++
++    if (isPending || !data) {
+         return <Loading fullScreen />;
+     }
 *** End Patch
+
+---
+
+Différence complémentaire : conserver `DashboardStats` pour le type `DashboardData`, même si la valeur initiale n'est plus nécessaire.
