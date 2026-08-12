@@ -1,0 +1,74 @@
+diff --git a/src/pages/attendance/Attendance.tsx b/src/pages/attendance/Attendance.tsx
+--- a/src/pages/attendance/Attendance.tsx
++++ b/src/pages/attendance/Attendance.tsx
+@@
+-import React, { useState, useEffect } from 'react';
++import React, { useState } from 'react';
++import { useQuery, useQueryClient } from '@tanstack/react-query';
+@@
+ const Attendance: React.FC = () => {
+     const { user } = useAuth();
+-    const [loading, setLoading] = useState<boolean>(true);
+-    const [attendances, setAttendances] = useState<AttendanceType[]>([]);
+-    const [stats, setStats] = useState({
+-        total: 0,
+-        present: 0,
+-        absent: 0,
+-        late: 0,
+-        half_day: 0,
+-    });
++    const queryClient = useQueryClient();
+     const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+ 
+-    useEffect(() => {
+-        fetchAttendance();
+-    }, [date]);
+-
+-    const fetchAttendance = async (): Promise<void> => {
+-        setLoading(true);
+-        try {
+-            const response = await axios.get('/attendances/today', { params: { date } });
+-            setAttendances(response.data.attendances);
+-            setStats(response.data.stats);
+-        } catch (error) {
+-            toast.error('Erreur lors du chargement des présences');
+-        } finally {
+-            setLoading(false);
+-        }
+-    };
++    const { data, isLoading } = useQuery({
++        queryKey: ['attendance', 'today', date],
++        queryFn: async () => (await axios.get('/attendances/today', { params: { date } })).data,
++        staleTime: 30_000,
++    });
++
++    const attendances: AttendanceType[] = data?.attendances ?? [];
++    const stats = data?.stats ?? { total: 0, present: 0, absent: 0, late: 0, half_day: 0 };
+@@
+             await axios.post('/attendances/clock-in', {
+@@
+             });
+             toast.success('Pointage entrée enregistré');
+-            fetchAttendance();
++            await queryClient.invalidateQueries({ queryKey: ['attendance'] });
+@@
+             });
+             toast.success('Pointage sortie enregistré');
+-            fetchAttendance();
++            await queryClient.invalidateQueries({ queryKey: ['attendance'] });
+@@
+-    if (loading) {
++    if (isLoading) {
+@@
+                     <button
++                        type="button"
+@@
+                     <button
++                        type="button"
+*** End Patch
+
+Notes d'intégration :
+- conserver les autres colonnes et la présentation existantes ;
+- ne pas appeler `window.location.reload()` ;
+- pour le filtre département, ajouter `department_id` à la queryKey et aux paramètres lorsque le sélecteur est ajouté ;
+- après clock-in/out, invalider aussi les queries Dashboard/portail si elles affichent le statut de présence.
