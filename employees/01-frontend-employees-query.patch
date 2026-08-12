@@ -1,0 +1,92 @@
+diff --git a/src/pages/employees/Employees.tsx b/src/pages/employees/Employees.tsx
+--- a/src/pages/employees/Employees.tsx
++++ b/src/pages/employees/Employees.tsx
+@@
+-import React, { useState, useEffect } from 'react';
++import React, { useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
++import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+@@
+-import toast from 'react-hot-toast';
++import toast from 'react-hot-toast';
+@@
+ const Employees: React.FC = () => {
+     const navigate = useNavigate();
+     const { hasPermission } = useAuth();
+-    const [loading, setLoading] = useState<boolean>(true);
+-    const [employeesData, setEmployeesData] = useState<Employee[]>([]);
+-    const [pagination, setPagination] = useState({
+-        current_page: 1,
+-        last_page: 1,
+-        per_page: 15,
+-        total: 0,
+-    });
++    const queryClient = useQueryClient();
+@@
+-    useEffect(() => {
+-        fetchEmployees();
+-    }, [filters]);
+-
+-    const fetchEmployees = async (): Promise<void> => {
+-        setLoading(true);
+-        try {
+-            const response = await employees.list(filters);
+-            const data = response.data as PaginatedResponse<Employee>;
+-            setEmployeesData(data.data);
+-            setPagination({
+-                current_page: data.current_page,
+-                last_page: data.last_page,
+-                per_page: data.per_page,
+-                total: data.total,
+-            });
+-        } catch (error) {
+-            toast.error('Erreur lors du chargement des employés');
+-        } finally {
+-            setLoading(false);
+-        }
+-    };
++    const { data, isPending, isFetching } = useQuery<PaginatedResponse<Employee>>({
++        queryKey: ['employees', filters],
++        queryFn: async () => (await employees.list(filters)).data as PaginatedResponse<Employee>,
++        staleTime: 30_000,
++        placeholderData: (previous) => previous,
++        refetchOnWindowFocus: false,
++    });
++
++    const employeesData = data?.data ?? [];
++    const pagination = data
++        ? { current_page: data.current_page, last_page: data.last_page, per_page: data.per_page, total: data.total }
++        : { current_page: 1, last_page: 1, per_page: 15, total: 0 };
++
++    const deleteMutation = useMutation({
++        mutationFn: (id: number) => employees.delete(id),
++        onSuccess: async () => {
++            toast.success('Employé terminé avec succès');
++            await queryClient.invalidateQueries({ queryKey: ['employees'] });
++        },
++        onError: () => toast.error('Erreur lors de la terminaison de l’employé'),
++    });
+@@
+-            await employees.delete(id);
+-            toast.success('Employé supprimé avec succès');
+-            fetchEmployees();
++            deleteMutation.mutate(id);
+         } catch (error) {
+-            toast.error('Erreur lors de la suppression');
++            // La mutation gère le retour utilisateur.
+         }
+@@
+     const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+-        if (e.key === 'Enter') {
+-            fetchEmployees();
+-        }
++        // Le changement de filters déclenche déjà la query. Aucun fetch manuel,
++        // donc aucune double requête sur Entrée.
++        if (e.key === 'Enter') e.preventDefault();
+     };
+@@
+-    if (loading && employeesData.length === 0) {
++    if (isPending) {
+         return <Loading fullScreen />;
+     }
+*** End Patch
