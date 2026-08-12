@@ -1,0 +1,17 @@
+diff --git a/app/Http/Controllers/Api/DashboardController.php b/app/Http/Controllers/Api/DashboardController.php
+--- a/app/Http/Controllers/Api/DashboardController.php
++++ b/app/Http/Controllers/Api/DashboardController.php
+@@
+             $activeContract = Contract::where('employee_id', $employee->id)
+                 ->where('status', 'active')
+                 ->first();
++
++            $payrollTotal = Payroll::where('employee_id', $employee->id)
++                ->where('month', now()->format('Y-m'))
++                ->sum('net_salary');
+@@
+                     'new_hires' => $employee->hire_date && $employee->hire_date->gte(now()->subDays(30)) ? 1 : 0,
+                     'contracts_expiring' => $activeContract?->end_date?->lte(now()->addDays(30)) ? 1 : 0,
++                    'payroll_total' => (int) $payrollTotal,
+                 ],
+*** End Patch
