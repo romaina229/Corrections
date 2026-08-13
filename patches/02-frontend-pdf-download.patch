@@ -1,9 +1,18 @@
 diff --git a/src/pages/payroll/Payrolls.tsx b/src/pages/payroll/Payrolls.tsx
+index d0d5d14..c17ccc5 100644
 --- a/src/pages/payroll/Payrolls.tsx
 +++ b/src/pages/payroll/Payrolls.tsx
-@@
+@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
+ import type { Payroll, Employee } from '../../types';
+ import toast from 'react-hot-toast';
+ import axios from '../../api/axios';
 -import { buildPayslipHtml } from './paysliptemplate';
-@@
++
+ import { 
+     CurrencyDollarIcon, 
+     ArrowDownTrayIcon as DownloadIcon, 
+@@ -176,23 +176,20 @@ const Payrolls: React.FC = () => {
+ 
      const downloadPayslip = async (id: number): Promise<void> => {
          try {
 -            const response = await axios.get(`/payrolls/${id}/download`);
@@ -40,19 +49,30 @@ diff --git a/src/pages/payroll/Payrolls.tsx b/src/pages/payroll/Payrolls.tsx
              toast.error('Erreur lors de la génération du bulletin');
          }
      };
-@@
+@@ -528,6 +525,7 @@ const Payrolls: React.FC = () => {
                                                  <button
                                                      onClick={() => downloadPayslip(payroll.id)}
                                                      className="text-blue-600 hover:text-blue-900 mr-3"
 +                                                    title="Télécharger le bulletin PDF"
                                                  >
-@@
- diff --git a/src/pages/portal/MyPayslips.tsx b/src/pages/portal/MyPayslips.tsx
- --- a/src/pages/portal/MyPayslips.tsx
- +++ b/src/pages/portal/MyPayslips.tsx
- @@
+                                                     <DownloadIcon className="h-5 w-5" />
+                                                 </button>
+diff --git a/src/pages/portal/MyPayslips.tsx b/src/pages/portal/MyPayslips.tsx
+index 8c63b5b..f5997e2 100644
+--- a/src/pages/portal/MyPayslips.tsx
++++ b/src/pages/portal/MyPayslips.tsx
+@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
+ import Card from '../../components/common/Card';
+ import Loading from '../../components/common/Loading';
+ import { portal } from '../../api/portal';
 -import { buildPayslipHtml } from '../payroll/paysliptemplate';
-@@
+ import type { Payroll } from '../../types';
+ import toast from 'react-hot-toast';
+ import { ArrowDownTrayIcon as DownloadIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
+@@ -49,24 +48,18 @@ const MyPayslips: React.FC = () => {
+         }
+     };
+ 
 -    const printPayslip = async (id: number): Promise<void> => {
 +    const downloadPayslip = async (id: number): Promise<void> => {
          try {
@@ -72,7 +92,6 @@ diff --git a/src/pages/payroll/Payrolls.tsx b/src/pages/payroll/Payrolls.tsx
 -            setTimeout(() => {
 -                printWindow.print();
 -            }, 500);
--        } catch (error: any) {
 +            const response = await portal.downloadPayslip(id);
 +            const blob = new Blob([response.data], { type: 'application/pdf' });
 +            const url = window.URL.createObjectURL(blob);
@@ -83,14 +102,18 @@ diff --git a/src/pages/payroll/Payrolls.tsx b/src/pages/payroll/Payrolls.tsx
 +            link.click();
 +            link.remove();
 +            window.URL.revokeObjectURL(url);
-+        } catch (error: any) {
+         } catch (error: any) {
              toast.error(error.response?.data?.message || 'Erreur lors de la génération du bulletin');
          }
-@@
+@@ -106,9 +99,9 @@ const MyPayslips: React.FC = () => {
+                                 </div>
+                             </div>
+                             <button
 -                                onClick={() => printPayslip(payslip.id)}
 +                                onClick={() => downloadPayslip(payslip.id)}
                                  className="p-1 text-primary-600 hover:text-primary-900"
 -                                title="Imprimer / télécharger"
 +                                title="Télécharger le bulletin PDF"
                              >
-*** End Patch
+                                 <DownloadIcon className="h-5 w-5" />
+                             </button>

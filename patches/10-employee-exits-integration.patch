@@ -1,0 +1,93 @@
+diff --git a/src/api/employees.ts b/src/api/employees.ts
+index 7b47219..7c21e91 100644
+--- a/src/api/employees.ts
++++ b/src/api/employees.ts
+@@ -19,6 +19,12 @@ export const employees = {
+     update: (id: string | number, data: EmployeeData) => axios.put(`/employees/${id}`, data),
+     delete: (id: string | number) => axios.delete(`/employees/${id}`),
+     stats: () => axios.get('/employees/stats'),
++    exits: (params?: Record<string, string | number>) => axios.get('/employees/exits', { params }),
++    terminate: (id: number | string, payload: {
++        termination_type: string;
++        terminated_at: string;
++        termination_reason?: string;
++    }) => axios.post(`/employees/${id}/terminate`, payload),
+ 
+     // Module carrière — chronologie complète d'un employé (vue RH/manager).
+     history: {
+diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
+index 77ca595..dde65e3 100644
+--- a/src/components/common/Sidebar.tsx
++++ b/src/components/common/Sidebar.tsx
+@@ -18,6 +18,7 @@ import {
+     BellIcon,
+     TrophyIcon,
+     DocumentCurrencyYenIcon,
++    ArrowRightOnRectangleIcon,
+     ChevronLeftIcon,
+     ChevronRightIcon,
+ } from '@heroicons/react/24/outline';
+@@ -83,6 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
+                     icon: UsersIcon,
+                     permission: 'view_employees',
+                 },
++                {
++                    name: 'Sorties employés',
++                    href: '/employees/exits',
++                    icon: ArrowRightOnRectangleIcon,
++                    permission: 'view_employees',
++                },
+                 {
+                     name: 'Départements',
+                     href: '/departments',
+diff --git a/src/pages/employees/Employees.tsx b/src/pages/employees/Employees.tsx
+index e2e1df7..9ba4b87 100644
+--- a/src/pages/employees/Employees.tsx
++++ b/src/pages/employees/Employees.tsx
+@@ -62,18 +62,6 @@ const Employees: React.FC = () => {
+         }
+     };
+ 
+-    const handleDelete = async (id: number): Promise<void> => {
+-        if (!confirm('Êtes-vous sûr de vouloir supprimer cet employé ?')) return;
+-
+-        try {
+-            await employees.delete(id);
+-            toast.success('Employé supprimé avec succès');
+-            fetchEmployees();
+-        } catch (error) {
+-            toast.error('Erreur lors de la suppression');
+-        }
+-    };
+-
+     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
+         setFilters({
+             ...filters,
+@@ -240,10 +228,12 @@ const Employees: React.FC = () => {
+                                                 <PencilIcon className="h-5 w-5" />
+                                             </button>
+                                         )}
+-                                        {hasPermission('delete_employees') && (
++                                        {hasPermission('delete_employees') && employee.status !== 'terminated' && (
+                                             <button
+-                                                onClick={() => handleDelete(employee.id)}
++                                                type="button"
++                                                onClick={() => navigate(`/employees/${employee.id}/terminate`)}
+                                                 className="text-danger-600 hover:text-danger-900"
++                                                title="Sortir l'employé"
+                                             >
+                                                 <TrashIcon className="h-5 w-5" />
+                                             </button>
+diff --git a/src/types/index.ts b/src/types/index.ts
+index 689ef3c..d413faf 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -61,6 +61,8 @@ export interface Employee {
+   social_security?: Record<string, any>;
+   status: 'active' | 'on_leave' | 'terminated' | 'suspended';
+   terminated_at?: string;
++  termination_type?: 'resignation' | 'dismissal' | 'contract_end' | 'retirement' | 'death' | 'other' | null;
++  termination_reason?: string | null;
+   created_at: string;
+   updated_at: string;
+   user?: User;

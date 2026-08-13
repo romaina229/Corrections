@@ -1,8 +1,9 @@
 diff --git a/src/pages/employees/EmployeeExits.tsx b/src/pages/employees/EmployeeExits.tsx
 new file mode 100644
+index 0000000..8188c67
 --- /dev/null
 +++ b/src/pages/employees/EmployeeExits.tsx
-@@
+@@ -0,0 +1,133 @@
 +import React, { useEffect, useState } from 'react';
 +import { useNavigate } from 'react-router-dom';
 +import Card from '../../components/common/Card';
@@ -32,10 +33,10 @@ new file mode 100644
 +        const timer = window.setTimeout(async () => {
 +            setLoading(true);
 +            try {
-+                const response = await employees.list({
-+                    search,
-+                    status: 'terminated',
-+                    page: 1,
++                const response = await employees.exits({
++                    ...(search ? { search } : {}),
++                    ...(type ? { termination_type: type } : {}),
++                    per_page: 50,
 +                });
 +                const data = response.data as PaginatedResponse<Employee>;
 +                setItems(data.data);
@@ -46,11 +47,7 @@ new file mode 100644
 +            }
 +        }, 250);
 +        return () => window.clearTimeout(timer);
-+    }, [search]);
-+
-+    // Une fois l'endpoint /employees/exits intégré, remplacer la requête
-+    // employees.list() par cette URL pour filtrer aussi par type de sortie.
-+    void type;
++    }, [search, type]);
 +
 +    if (loading && items.length === 0) return <Loading fullScreen />;
 +
@@ -58,7 +55,7 @@ new file mode 100644
 +        <div className="space-y-6">
 +            <div>
 +                <h1 className="text-2xl font-bold text-gray-900">Sorties employés</h1>
-+                <p className="mt-1 text-gray-500">Salariés ayant quitté l’organisation et historique de sortie.</p>
++                <p className="mt-1 text-gray-500">Salariés ayant quitté l'organisation et historique de sortie.</p>
 +            </div>
 +
 +            <Card>
@@ -99,6 +96,13 @@ new file mode 100644
 +                            </tr>
 +                        </thead>
 +                        <tbody className="divide-y divide-gray-200">
++                            {items.length === 0 && (
++                                <tr>
++                                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
++                                        Aucune sortie enregistrée
++                                    </td>
++                                </tr>
++                            )}
 +                            {items.map((employee) => (
 +                                <tr key={employee.id}>
 +                                    <td className="px-4 py-3 font-medium text-gray-900">
@@ -110,7 +114,7 @@ new file mode 100644
 +                                        {employee.terminated_at ? new Date(employee.terminated_at).toLocaleDateString('fr-FR') : '-'}
 +                                    </td>
 +                                    <td className="px-4 py-3 text-sm text-gray-600">
-+                                        {EXIT_TYPES[(employee as any).termination_type] || 'Non renseigné'}
++                                        {employee.termination_type ? (EXIT_TYPES[employee.termination_type] || 'Non renseigné') : 'Non renseigné'}
 +                                    </td>
 +                                    <td className="px-4 py-3 text-right">
 +                                        <button
@@ -133,57 +137,3 @@ new file mode 100644
 +};
 +
 +export default EmployeeExits;
-+
-+diff --git a/src/types/index.ts b/src/types/index.ts
-+@@
-+ export interface Employee {
-+     // ... champs existants ...
-++    terminated_at?: string | null;
-++    termination_type?: 'resignation' | 'dismissal' | 'contract_end' | 'retirement' | 'death' | 'other' | null;
-++    termination_reason?: string | null;
-+ }
-+
-+diff --git a/src/api/employees.ts b/src/api/employees.ts
-+@@
-+ export const employees = {
-+     // ... méthodes existantes ...
-++    exits: (params?: Record<string, string | number>) => axios.get('/employees/exits', { params }),
-++    terminate: (id: number, payload: {
-++        termination_type: string;
-++        terminated_at: string;
-++        termination_reason?: string;
-++    }) => axios.post(`/employees/${id}/terminate`, payload),
-+ };
-+
-+diff --git a/src/AppRoutes.tsx b/src/AppRoutes.tsx
-+@@
-++import EmployeeExits from './pages/employees/EmployeeExits';
-+@@
-+             <Route path="/employees" element={<Employees />} />
-++            <Route path="/employees/exits" element={<EmployeeExits />} />
-+             <Route path="/employees/create" element={<EmployeeCreate />} />
-+
-+diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
-+@@
-++            {
-++                name: 'Sorties employés',
-++                href: '/employees/exits',
-++                icon: ArrowRightOnRectangleIcon,
-++                permission: 'view_employees',
-++            },
-+
-+diff --git a/src/pages/employees/Employees.tsx b/src/pages/employees/Employees.tsx
-+@@
-+-                        <button
-+-                            onClick={() => handleDelete(employee.id)}
-++                        <button
-++                            type="button"
-++                            onClick={() => navigate(`/employees/${employee.id}/terminate`)}
-+                             className="text-danger-600 hover:text-danger-900"
-+                         >
-+                             <TrashIcon className="h-5 w-5" />
-+                         </button>
-+@@
-+-                            Rechercher un employé...
-++                            Rechercher un employé...
-*** End Patch

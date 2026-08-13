@@ -1,0 +1,13 @@
+diff --git a/src/api/portal.ts b/src/api/portal.ts
+index 8e1f55f..45ed155 100644
+--- a/src/api/portal.ts
++++ b/src/api/portal.ts
+@@ -28,6 +28,8 @@ export const portal = {
+ 
+     payslips: (params?: ListParams) => axios.get('/portal/payslips', { params }),
+     payslip: (id: number | string) => axios.get(`/portal/payslips/${id}`),
++    downloadPayslip: (id: number | string) =>
++        axios.get(`/portal/payslips/${id}/download`, { responseType: 'blob' }),
+ 
+     // Module carrière — lecture seule de mon propre parcours.
+     history: () => axios.get('/portal/history'),

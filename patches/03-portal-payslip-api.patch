@@ -1,18 +1,19 @@
 diff --git a/app/Http/Controllers/Api/EmployeePortalController.php b/app/Http/Controllers/Api/EmployeePortalController.php
+index c7921a7..17f36ab 100644
 --- a/app/Http/Controllers/Api/EmployeePortalController.php
 +++ b/app/Http/Controllers/Api/EmployeePortalController.php
-@@
- use App\Services\PayslipPdfService;
-@@
--    public function payslipShow(Request $request, Payroll $payroll)
-+    public function payslipShow(Request $request, Payroll $payroll)
-     {
-@@
-         return response()->json([
-             'payroll' => $payroll->load(['employee.user', 'employee.department', 'employee.position', 'tenant']),
+@@ -8,6 +8,7 @@
+ use App\Models\Leave;
+ use App\Models\LeaveBalance;
+ use App\Models\Payroll;
++use App\Services\PayslipPdfService;
+ use Carbon\Carbon;
+ use Illuminate\Http\Request;
+ use Illuminate\Support\Facades\Storage;
+@@ -241,6 +242,19 @@ public function payslipShow(Request $request, Payroll $payroll)
          ]);
      }
-+
+ 
 +    public function payslipDownload(Request $request, Payroll $payroll, PayslipPdfService $pdfService)
 +    {
 +        $employee = $this->currentEmployee($request);
@@ -25,21 +26,19 @@ diff --git a/app/Http/Controllers/Api/EmployeePortalController.php b/app/Http/Co
 +
 +        return $pdf->download($filename);
 +    }
-***
- diff --git a/routes/api.php b/routes/api.php
- --- a/routes/api.php
- +++ b/routes/api.php
- @@
++
+     /**
+      * "Mon parcours" — chronologie de carrière personnelle (lecture
+      * seule). L'ajout d'événements reste réservé aux RH/managers via
+diff --git a/routes/api.php b/routes/api.php
+index 7b2ad38..6e7615e 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -51,6 +51,7 @@
+ 
              Route::get('/payslips', [EmployeePortalController::class, 'payslips']);
              Route::get('/payslips/{payroll}', [EmployeePortalController::class, 'payslipShow']);
 +            Route::get('/payslips/{payroll}/download', [EmployeePortalController::class, 'payslipDownload']);
-***
- diff --git a/src/api/portal.ts b/src/api/portal.ts
- --- a/src/api/portal.ts
- +++ b/src/api/portal.ts
- @@
-     payslips: (params?: ListParams) => axios.get('/portal/payslips', { params }),
-     payslip: (id: number | string) => axios.get(`/portal/payslips/${id}`),
-+    downloadPayslip: (id: number | string) =>
-+        axios.get(`/portal/payslips/${id}/download`, { responseType: 'blob' }),
-*** End Patch
+ 
+             // Module carrière — lecture seule pour l'employé lui-même.
+             Route::get('/history', [EmployeePortalController::class, 'history']);

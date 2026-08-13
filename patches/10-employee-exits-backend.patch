@@ -1,8 +1,129 @@
-diff --git a/database/migrations/xxxx_xx_xx_xxxxxx_add_termination_details_to_employees_table.php b/database/migrations/xxxx_xx_xx_xxxxxx_add_termination_details_to_employees_table.php
+diff --git a/app/Http/Controllers/Api/EmployeeController.php b/app/Http/Controllers/Api/EmployeeController.php
+index 8ca039d..550863c 100644
+--- a/app/Http/Controllers/Api/EmployeeController.php
++++ b/app/Http/Controllers/Api/EmployeeController.php
+@@ -250,8 +250,100 @@ public function update(Request $request, Employee $employee, EmployeeHistoryServ
+         }
+     }
+ 
++    /**
++     * Liste des employés sortis (statut terminated), avec recherche et
++     * filtre par type de sortie. Isolation tenant garantie par le scope
++     * global BelongsToTenant du modèle Employee.
++     */
++    public function exits(Request $request)
++    {
++        $query = Employee::with(['user', 'department', 'position'])
++            ->where('status', 'terminated');
++
++        if ($request->filled('search')) {
++            $search = $request->string('search');
++            $query->where(function ($q) use ($search) {
++                $q->where('employee_number', 'like', "%{$search}%")
++                    ->orWhereHas('user', function ($u) use ($search) {
++                        $u->where('first_name', 'like', "%{$search}%")
++                          ->orWhere('last_name', 'like', "%{$search}%")
++                          ->orWhere('email', 'like', "%{$search}%");
++                    });
++            });
++        }
++
++        if ($request->filled('termination_type')) {
++            $query->where('termination_type', $request->termination_type);
++        }
++
++        return response()->json(
++            $query->latest('terminated_at')->paginate($request->integer('per_page', 15))
++        );
++    }
++
++    /**
++     * Enregistre la sortie structurée d'un employé (type, date, motif).
++     * Remplace progressivement l'usage de destroy() pour ce cas d'usage :
++     * destroy() reste disponible pour compatibilité mais devrait être
++     * abandonné côté frontend au profit de cette action explicite.
++     */
++    public function terminate(Request $request, Employee $employee, EmployeeHistoryService $historyService)
++    {
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        $validated = $request->validate([
++            'termination_type' => 'required|in:resignation,dismissal,contract_end,retirement,death,other',
++            'terminated_at' => 'required|date',
++            'termination_reason' => 'nullable|string|max:2000',
++        ]);
++
++        if ($employee->status === 'terminated') {
++            return response()->json(['message' => 'Cet employé est déjà sorti de l\'organisation.'], 422);
++        }
++
++        DB::beginTransaction();
++        try {
++            $employee->user->update(['status' => 'inactive']);
++            $employee->update([
++                'status' => 'terminated',
++                'terminated_at' => $validated['terminated_at'],
++                'termination_type' => $validated['termination_type'],
++                'termination_reason' => $validated['termination_reason'] ?? null,
++            ]);
++
++            $employee->contracts()->where('status', 'active')->update([
++                'status' => 'terminated',
++                'termination_reason' => $validated['termination_reason'] ?? 'Sortie de l\'employé',
++            ]);
++
++            $historyService->logTermination(
++                $employee,
++                $validated['termination_reason'] ?? 'Sortie de l\'employé.'
++            );
++
++            DB::commit();
++
++            return response()->json([
++                'message' => 'Sortie de l\'employé enregistrée avec succès',
++                'employee' => $employee->fresh()->load(['user', 'department', 'position']),
++            ]);
++        } catch (\Throwable $e) {
++            DB::rollBack();
++            report($e);
++            return response()->json(['message' => 'Une erreur interne est survenue lors de la sortie.'], 500);
++        }
++    }
++
+     public function destroy(Employee $employee, EmployeeHistoryService $historyService)
+     {
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         DB::beginTransaction();
+ 
+         try {
+diff --git a/app/Models/Employee.php b/app/Models/Employee.php
+index 152333c..e8b80bc 100644
+--- a/app/Models/Employee.php
++++ b/app/Models/Employee.php
+@@ -28,7 +28,9 @@ class Employee extends Model
+         'bank_details',
+         'social_security',
+         'status',
+-        'terminated_at'
++        'terminated_at',
++        'termination_type',
++        'termination_reason',
+     ];
+ 
+     protected $casts = [
+diff --git a/database/migrations/2026_08_13_102717_add_termination_details_to_employees_table.php b/database/migrations/2026_08_13_102717_add_termination_details_to_employees_table.php
 new file mode 100644
+index 0000000..e244af2
 --- /dev/null
-+++ b/database/migrations/xxxx_xx_xx_xxxxxx_add_termination_details_to_employees_table.php
-@@
++++ b/database/migrations/2026_08_13_102717_add_termination_details_to_employees_table.php
+@@ -0,0 +1,22 @@
 +<?php
 +
 +use Illuminate\Database\Migrations\Migration;
@@ -25,112 +146,25 @@ new file mode 100644
 +        });
 +    }
 +};
-+
-+diff --git a/app/Models/Employee.php b/app/Models/Employee.php
-+@@
-+         'status',
-+-        'terminated_at'
-++        'terminated_at',
-++        'termination_type',
-++        'termination_reason'
-+@@
-++        'termination_type' => 'string',
-++        'termination_reason' => 'string',
-+
-+diff --git a/app/Http/Controllers/Api/EmployeeController.php b/app/Http/Controllers/Api/EmployeeController.php
-+@@
-++    public function exits(Request $request)
-++    {
-++        $query = Employee::with(['user', 'department', 'position'])
-++            ->where('status', 'terminated');
-++
-++        if ($request->filled('search')) {
-++            $search = $request->string('search');
-++            $query->where(function ($q) use ($search) {
-++                $q->where('employee_number', 'like', "%{$search}%")
-++                    ->orWhereHas('user', function ($u) use ($search) {
-++                        $u->where('first_name', 'like', "%{$search}%")
-++                          ->orWhere('last_name', 'like', "%{$search}%")
-++                          ->orWhere('email', 'like', "%{$search}%");
-++                    });
-++            });
-++        }
-++
-++        if ($request->filled('termination_type')) {
-++            $query->where('termination_type', $request->termination_type);
-++        }
-++
-++        return response()->json(
-++            $query->latest('terminated_at')->paginate($request->integer('per_page', 15))
-++        );
-++    }
-++
-++    public function terminate(Request $request, Employee $employee, EmployeeHistoryService $historyService)
-++    {
-++        $validated = $request->validate([
-++            'termination_type' => 'required|in:resignation,dismissal,contract_end,retirement,death,other',
-++            'terminated_at' => 'required|date',
-++            'termination_reason' => 'nullable|string|max:2000',
-++        ]);
-++
-++        if ($employee->status === 'terminated') {
-++            return response()->json(['message' => 'Cet employé est déjà sorti de l’organisation.'], 422);
-++        }
-++
-++        DB::beginTransaction();
-++        try {
-++            $employee->user->update(['status' => 'inactive']);
-++            $employee->update([
-++                'status' => 'terminated',
-++                'terminated_at' => $validated['terminated_at'],
-++                'termination_type' => $validated['termination_type'],
-++                'termination_reason' => $validated['termination_reason'] ?? null,
-++            ]);
-++
-++            $employee->contracts()->where('status', 'active')->update([
-++                'status' => 'terminated',
-++                'termination_reason' => $validated['termination_reason'] ?? 'Sortie de l’employé',
-++            ]);
-++
-++            $historyService->logTermination(
-++                $employee,
-++                $validated['termination_reason'] ?? 'Sortie de l’employé.'
-++            );
-++
-++            DB::commit();
-++
-++            return response()->json([
-++                'message' => 'Sortie de l’employé enregistrée avec succès',
-++                'employee' => $employee->fresh()->load(['user', 'department', 'position']),
-++            ]);
-++        } catch (\Throwable $e) {
-++            DB::rollBack();
-++            report($e);
-++            return response()->json(['message' => 'Une erreur interne est survenue lors de la sortie.'], 500);
-++        }
-++    }
-++
-++    public function destroy(Employee $employee)
-++    {
-++        return response()->json([
-++            'message' => 'Utilisez l’action de sortie employé avec un motif explicite.'
-++        ], 422);
-++    }
-+
-+diff --git a/routes/api.php b/routes/api.php
-+@@
-+         Route::middleware('permission:view_employees')->group(function () {
-+             Route::get('/employees', [EmployeeController::class, 'index']);
-+             Route::get('/employees/stats', [EmployeeController::class, 'stats']);
-++            // Route statique AVANT /employees/{employee} pour éviter que « exits »
-++            // soit interprété comme un identifiant d'employé.
-++            Route::get('/employees/exits', [EmployeeController::class, 'exits']);
-+             Route::get('/employees/{employee}', [EmployeeController::class, 'show']);
-+             Route::get('/employees/{employee}/history', [EmployeeHistoryController::class, 'index']);
-+         });
-+         Route::post('/employees', [EmployeeController::class, 'store'])->middleware('permission:create_employees');
-+         Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->middleware('permission:edit_employees');
-+         Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->middleware('permission:delete_employees');
-++        Route::post('/employees/{employee}/terminate', [EmployeeController::class, 'terminate'])->middleware('permission:delete_employees');
-+         Route::post('/employees/{employee}/history', [EmployeeHistoryController::class, 'store'])->middleware('permission:edit_employees');
-+         Route::delete('/employee-history/{employeeHistory}', [EmployeeHistoryController::class, 'destroy'])->middleware('permission:edit_employees');
+diff --git a/routes/api.php b/routes/api.php
+index 7b2ad38..d1b0688 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -59,6 +59,9 @@
+         Route::middleware('permission:view_employees')->group(function () {
+             Route::get('/employees', [EmployeeController::class, 'index']);
+             Route::get('/employees/stats', [EmployeeController::class, 'stats']);
++            // Route statique AVANT /employees/{employee} pour éviter que « exits »
++            // soit interprété comme un identifiant d'employé.
++            Route::get('/employees/exits', [EmployeeController::class, 'exits']);
+             Route::get('/employees/{employee}', [EmployeeController::class, 'show']);
+ 
+             // Module carrière — chronologie complète, vue RH/manager.
+@@ -67,6 +70,7 @@
+         Route::post('/employees', [EmployeeController::class, 'store'])->middleware('permission:create_employees');
+         Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->middleware('permission:edit_employees');
+         Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->middleware('permission:delete_employees');
++        Route::post('/employees/{employee}/terminate', [EmployeeController::class, 'terminate'])->middleware('permission:delete_employees');
+ 
+         Route::post('/employees/{employee}/history', [EmployeeHistoryController::class, 'store'])->middleware('permission:edit_employees');
+         Route::delete('/employee-history/{employeeHistory}', [EmployeeHistoryController::class, 'destroy'])->middleware('permission:edit_employees');

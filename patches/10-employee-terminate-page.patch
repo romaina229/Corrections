@@ -1,8 +1,9 @@
 diff --git a/src/pages/employees/EmployeeTerminate.tsx b/src/pages/employees/EmployeeTerminate.tsx
 new file mode 100644
+index 0000000..e110fe8
 --- /dev/null
 +++ b/src/pages/employees/EmployeeTerminate.tsx
-@@
+@@ -0,0 +1,112 @@
 +import React, { useEffect, useState } from 'react';
 +import { useNavigate, useParams } from 'react-router-dom';
 +import Card from '../../components/common/Card';
@@ -10,11 +11,12 @@ new file mode 100644
 +import { employees } from '../../api/employees';
 +import axios from '../../api/axios';
 +import toast from 'react-hot-toast';
++import type { Employee } from '../../types';
 +
 +const EmployeeTerminate: React.FC = () => {
 +    const { id } = useParams<{ id: string }>();
 +    const navigate = useNavigate();
-+    const [employee, setEmployee] = useState<any>(null);
++    const [employee, setEmployee] = useState<Employee | null>(null);
 +    const [type, setType] = useState('resignation');
 +    const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 +    const [reason, setReason] = useState('');
@@ -32,11 +34,31 @@ new file mode 100644
 +
 +    if (!employee) return <Loading fullScreen />;
 +
-+    const submit = async (event: React.FormEvent) => {
++    if (employee.status === 'terminated') {
++        return (
++            <div className="max-w-3xl mx-auto space-y-6">
++                <Card>
++                    <p className="text-gray-700">
++                        Cet employé est déjà sorti de l'organisation
++                        {employee.terminated_at ? ` depuis le ${new Date(employee.terminated_at).toLocaleDateString('fr-FR')}` : ''}.
++                    </p>
++                    <button
++                        type="button"
++                        onClick={() => navigate('/employees/exits')}
++                        className="mt-4 px-4 py-2 border rounded-md"
++                    >
++                        Retour aux sorties
++                    </button>
++                </Card>
++            </div>
++        );
++    }
++
++    const submit = async (event: React.FormEvent): Promise<void> => {
 +        event.preventDefault();
 +        setSaving(true);
 +        try {
-+            await employees.terminate(Number(id), {
++            await employees.terminate(id as string, {
 +                termination_type: type,
 +                terminated_at: date,
 +                termination_reason: reason || undefined,
@@ -44,7 +66,7 @@ new file mode 100644
 +            toast.success('Sortie enregistrée avec succès');
 +            navigate('/employees/exits');
 +        } catch (error: any) {
-+            toast.error(error.response?.data?.message || 'Impossible d’enregistrer la sortie');
++            toast.error(error.response?.data?.message || "Impossible d'enregistrer la sortie");
 +        } finally {
 +            setSaving(false);
 +        }
@@ -53,7 +75,7 @@ new file mode 100644
 +    return (
 +        <div className="max-w-3xl mx-auto space-y-6">
 +            <div>
-+                <h1 className="text-2xl font-bold text-gray-900">Sortie de l’employé</h1>
++                <h1 className="text-2xl font-bold text-gray-900">Sortie de l'employé</h1>
 +                <p className="mt-1 text-gray-500">
 +                    {employee.user?.first_name} {employee.user?.last_name} — {employee.employee_number}
 +                </p>
@@ -94,9 +116,28 @@ new file mode 100644
 +};
 +
 +export default EmployeeTerminate;
-+
-+diff --git a/src/AppRoutes.tsx b/src/AppRoutes.tsx
-+@@
-++import EmployeeTerminate from './pages/employees/EmployeeTerminate';
-+@@
-++            <Route path="/employees/:id/terminate" element={<EmployeeTerminate />} />
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index cd3703e..7f3e9d2 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -19,6 +19,8 @@ import AdminDashboard from '../pages/admin/AdminDashboard';
+ import Dashboard from '../pages/dashboard/Dashboard';
+ import Employees from '../pages/employees/Employees';
+ import EmployeeCreate from '../pages/employees/EmployeeCreate';
++import EmployeeExits from '../pages/employees/EmployeeExits';
++import EmployeeTerminate from '../pages/employees/EmployeeTerminate';
+ import EmployeeEdit from '../pages/employees/EmployeeEdit';
+ import EmployeeShow from '../pages/employees/EmployeeShow';
+ import Departments from '../pages/departments/Departments';
+@@ -77,9 +79,11 @@ const AppRoutes = () => {
+ 
+                             {/* Employés */}
+                             <Route path="/employees" element={<Employees />} />
++                            <Route path="/employees/exits" element={<EmployeeExits />} />
+                             <Route path="/employees/create" element={<EmployeeCreate />} />
+                             <Route path="/employees/:id" element={<EmployeeShow />} />
+                             <Route path="/employees/:id/edit" element={<EmployeeEdit />} />
++                            <Route path="/employees/:id/terminate" element={<EmployeeTerminate />} />
+ 
+                             {/* Départements */}
+                             <Route path="/departments" element={<Departments />} />

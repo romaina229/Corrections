@@ -1,53 +1,19 @@
-diff --git a/composer.json b/composer.json
---- a/composer.json
-+++ b/composer.json
-@@
-     "require": {
-         "php": "^8.3",
-+        "barryvdh/laravel-dompdf": "^3.1",
-         "laravel/framework": "^13.8",
-         "laravel/sanctum": "^4.3",
-         "laravel/tinker": "^3.0",
-         "spatie/laravel-permission": "^8.3"
-     },
-
-diff --git a/app/Services/PayslipPdfService.php b/app/Services/PayslipPdfService.php
-new file mode 100644
---- /dev/null
-+++ b/app/Services/PayslipPdfService.php
-@@
-+<?php
-+
-+namespace App\Services;
-+
-+use App\Models\Payroll;
-+use Barryvdh\DomPDF\Facade\Pdf;
-+
-+class PayslipPdfService
-+{
-+    public function generate(Payroll $payroll)
-+    {
-+        $payroll->load([
-+            'employee.user',
-+            'employee.department',
-+            'employee.position',
-+            'tenant',
-+        ]);
-+
-+        return Pdf::loadView('pdf.payslip', [
-+            'payroll' => $payroll,
-+        ])->setPaper('a4', 'portrait');
-+    }
-+}
-+
-
 diff --git a/app/Http/Controllers/Api/PayrollController.php b/app/Http/Controllers/Api/PayrollController.php
+index d7bb4ea..b363ca5 100644
 --- a/app/Http/Controllers/Api/PayrollController.php
 +++ b/app/Http/Controllers/Api/PayrollController.php
-@@
+@@ -6,6 +6,7 @@
+ use App\Models\Employee;
+ use App\Models\Payroll;
  use App\Services\PayslipBuilderService;
 +use App\Services\PayslipPdfService;
-@@
+ use Carbon\Carbon;
+ use Illuminate\Http\Request;
+ use Illuminate\Support\Facades\DB;
+@@ -298,18 +299,19 @@ public function show(Payroll $payroll)
+         ]);
+     }
+ 
 -    public function download(Payroll $payroll)
 +    public function download(Payroll $payroll, PayslipPdfService $pdfService)
      {
@@ -61,10 +27,242 @@ diff --git a/app/Http/Controllers/Api/PayrollController.php b/app/Http/Controlle
 -            ]),
 -            'format' => 'print',
 -        ]);
++        abort_unless(
++            (int) $payroll->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
 +        $pdf = $pdfService->generate($payroll);
++
 +        $employeeName = str($payroll->employee?->full_name ?: 'employe')->slug('-');
 +        $filename = 'bulletin-de-paie-' . $employeeName . '-' . $payroll->month . '.pdf';
 +
 +        return $pdf->download($filename);
      }
-*** End Patch
+ 
+     public function verify(string $qrToken)
+diff --git a/app/Services/PayslipPdfService.php b/app/Services/PayslipPdfService.php
+new file mode 100644
+index 0000000..6ff22ac
+--- /dev/null
++++ b/app/Services/PayslipPdfService.php
+@@ -0,0 +1,50 @@
++<?php
++
++namespace App\Services;
++
++use App\Models\Payroll;
++use Barryvdh\DomPDF\Facade\Pdf;
++use SimpleSoftwareIO\QrCode\Facades\QrCode;
++
++class PayslipPdfService
++{
++    /**
++     * Génère le bulletin de paie en PDF portrait A4, avec QR code de
++     * vérification intégré (pointe vers l'API publique de vérification).
++     */
++    public function generate(Payroll $payroll)
++    {
++        $payroll->load([
++            'employee.user',
++            'employee.department',
++            'employee.position',
++            'tenant',
++        ]);
++
++        $verificationUrl = rtrim(config('app.url'), '/') . '/api/payslips/verify/' . $payroll->qr_token;
++
++        $qrCodeBase64 = base64_encode(
++            QrCode::format('png')
++                ->size(140)
++                ->margin(1)
++                ->generate($verificationUrl)
++        );
++
++        $logoPath = null;
++        if ($payroll->tenant?->logo && \Illuminate\Support\Facades\Storage::disk('public')->exists($payroll->tenant->logo)) {
++            $logoPath = \Illuminate\Support\Facades\Storage::disk('public')->path($payroll->tenant->logo);
++        }
++
++        return Pdf::loadView('pdf.payslip', [
++            'payroll' => $payroll,
++            'qrCodeBase64' => $qrCodeBase64,
++            'verificationUrl' => $verificationUrl,
++            'logoPath' => $logoPath,
++        ])
++            ->setPaper('a4', 'portrait')
++            ->setOptions([
++                'isRemoteEnabled' => true,
++                'defaultFont' => 'DejaVu Sans',
++            ]);
++    }
++}
+diff --git a/composer.json b/composer.json
+index 381a732..8f1769d 100644
+--- a/composer.json
++++ b/composer.json
+@@ -10,9 +10,11 @@
+     "license": "MIT",
+     "require": {
+         "php": "^8.3",
++        "barryvdh/laravel-dompdf": "^3.1",
+         "laravel/framework": "^13.8",
+         "laravel/sanctum": "^4.3",
+         "laravel/tinker": "^3.0",
++        "simplesoftwareio/simple-qrcode": "^4.2",
+         "spatie/laravel-permission": "^8.3"
+     },
+     "require-dev": {
+diff --git a/resources/views/pdf/payslip.blade.php b/resources/views/pdf/payslip.blade.php
+new file mode 100644
+index 0000000..7003a8c
+--- /dev/null
++++ b/resources/views/pdf/payslip.blade.php
+@@ -0,0 +1,147 @@
++<!doctype html>
++<html lang="fr">
++<head>
++    <meta charset="utf-8">
++    <title>Bulletin de paie</title>
++    <style>
++        @page { size: A4 portrait; margin: 14mm 12mm; }
++        * { box-sizing: border-box; }
++        body { margin: 0; font-family: DejaVu Sans, sans-serif; color: #17152b; font-size: 10px; }
++        .header { background: #191a3d; color: white; padding: 14px 16px; border-radius: 8px 8px 0 0; }
++        .header-table, .info-table, .lines, .summary { width: 100%; border-collapse: collapse; }
++        .header-table td { vertical-align: middle; }
++        .logo { width: 42px; height: 42px; border-radius: 6px; margin-right: 10px; background: white; }
++        .brand { font-size: 15px; font-weight: 700; }
++        .muted-light { color: #c9c7e8; font-size: 8px; line-height: 1.45; }
++        .title { text-align: center; padding: 12px 0 8px; }
++        .title h1 { margin: 0; font-size: 16px; color: #191a3d; }
++        .title p { margin: 3px 0 0; color: #77738e; font-size: 9px; }
++        .info { background: #f7f6fb; border: 1px solid #e3e0f1; border-radius: 7px; padding: 9px; }
++        .info-table td { padding: 3px 5px; width: 50%; }
++        .label { color: #77738e; font-weight: 700; }
++        .value { color: #191a3d; }
++        .lines { margin-top: 12px; }
++        .lines th { background: #f0effb; color: #5b4fe8; padding: 7px 6px; text-align: left; font-size: 8px; text-transform: uppercase; }
++        .lines th:last-child, .lines td:last-child { text-align: right; }
++        .lines td { padding: 6px; border-bottom: 1px solid #eceaf4; }
++        .gain { color: #0b9b82; }
++        .retenue { color: #d9474d; }
++        .summary { margin-top: 12px; }
++        .summary td { border: 1px solid #e3e0f1; padding: 8px; }
++        .summary .net { background: #191a3d; color: white; width: 40%; }
++        .summary .net .amount { color: #18c5a3; font-size: 16px; font-weight: 700; }
++        .footer { margin-top: 12px; border-top: 1px dashed #d9d6e8; padding-top: 8px; }
++        .footer-table { width: 100%; border-collapse: collapse; }
++        .footer-table td { vertical-align: middle; }
++        .footer-text { color: #88849d; font-size: 7.5px; }
++        .qr-cell { text-align: right; width: 90px; }
++        .qr-cell img { width: 66px; height: 66px; }
++        .qr-caption { color: #a6a3b8; font-size: 6.5px; margin-top: 2px; }
++        .right { text-align: right; }
++    </style>
++</head>
++<body>
++    @php
++        $employee = $payroll->employee;
++        $tenant = $payroll->tenant;
++        $items = $payroll->breakdown ?? [];
++        $monthLabel = \Carbon\Carbon::createFromFormat('Y-m', $payroll->month)->translatedFormat('F Y');
++        $employeeName = $employee?->full_name ?? trim(($employee?->user?->first_name ?? '') . ' ' . ($employee?->user?->last_name ?? ''));
++        $totalGains = collect($items)->whereNotNull('gain')->sum('gain');
++        $totalDeductions = collect($items)->whereNotNull('retenue')->where(fn($item) => empty($item['patronal']))->sum('retenue');
++    @endphp
++
++    <div class="header">
++        <table class="header-table">
++            <tr>
++                @if($logoPath)
++                    <td style="width: 52px;">
++                        <img src="{{ $logoPath }}" class="logo" alt="Logo">
++                    </td>
++                @endif
++                <td>
++                    <div class="brand">{{ $tenant?->emitting_authority ?: $tenant?->name ?: 'SDS-RH' }}</div>
++                    <div class="muted-light">
++                        {{ $tenant?->address }}
++                        @if($tenant?->phone) · Tél. {{ $tenant->phone }} @endif
++                        @if($tenant?->email) · {{ $tenant->email }} @endif
++                        @if($tenant?->ifu) · IFU {{ $tenant->ifu }} @endif
++                    </div>
++                </td>
++                <td class="right">
++                    <strong>Bulletin n° {{ substr($payroll->qr_token ?: (string) $payroll->id, 0, 10) }}</strong><br>
++                    <span class="muted-light">Émis le {{ now()->format('d/m/Y') }}</span>
++                </td>
++            </tr>
++        </table>
++    </div>
++
++    <div class="title">
++        <h1>BULLETIN DE PAIE</h1>
++        <p>{{ ucfirst($monthLabel) }}</p>
++    </div>
++
++    <div class="info">
++        <table class="info-table">
++            <tr>
++                <td><span class="label">Employé :</span> <span class="value">{{ $employeeName }}</span></td>
++                <td><span class="label">Matricule :</span> <span class="value">{{ $employee?->employee_number }}</span></td>
++            </tr>
++            <tr>
++                <td><span class="label">Département :</span> <span class="value">{{ $employee?->department?->name ?: '—' }}</span></td>
++                <td><span class="label">Poste :</span> <span class="value">{{ $employee?->position?->title ?: '—' }}</span></td>
++            </tr>
++            <tr>
++                <td><span class="label">Embauche :</span> <span class="value">{{ $employee?->hire_date?->format('d/m/Y') ?: '—' }}</span></td>
++                <td><span class="label">Jours travaillés :</span> <span class="value">{{ $payroll->worked_days ?: '—' }}</span></td>
++            </tr>
++            <tr>
++                <td><span class="label">Mode de paiement :</span> <span class="value">{{ $payroll->payment_method ?: '—' }}</span></td>
++                <td><span class="label">Statut :</span> <span class="value">{{ $payroll->status }}</span></td>
++            </tr>
++        </table>
++    </div>
++
++    <table class="lines">
++        <thead>
++            <tr><th>Éléments de rémunération</th><th class="right">Montant</th></tr>
++        </thead>
++        <tbody>
++            @forelse($items as $item)
++                @if(($item['gain'] ?? null) !== null && $item['gain'] > 0)
++                    <tr><td>{{ $item['label'] }} @if(!empty($item['patronal'])) <small>(charge patronale)</small> @endif</td><td class="gain">{{ number_format($item['gain'], 0, ',', ' ') }} FCFA</td></tr>
++                @endif
++                @if(($item['retenue'] ?? null) !== null && $item['retenue'] > 0 && empty($item['patronal']))
++                    <tr><td>{{ $item['label'] }}</td><td class="retenue">- {{ number_format($item['retenue'], 0, ',', ' ') }} FCFA</td></tr>
++                @endif
++            @empty
++                <tr><td colspan="2">Aucune ligne de paie disponible.</td></tr>
++            @endforelse
++        </tbody>
++    </table>
++
++    <table class="summary">
++        <tr>
++            <td><span class="label">Total gains</span><br><strong>{{ number_format($totalGains, 0, ',', ' ') }} FCFA</strong></td>
++            <td><span class="label">Total retenues</span><br><strong>{{ number_format($totalDeductions, 0, ',', ' ') }} FCFA</strong></td>
++            <td class="net"><span>NET À PAYER</span><br><span class="amount">{{ number_format($payroll->net_salary, 0, ',', ' ') }} FCFA</span></td>
++        </tr>
++    </table>
++
++    <div class="footer">
++        <table class="footer-table">
++            <tr>
++                <td class="footer-text">
++                    Document généré par SDS-RH. Ce bulletin est un document électronique officiel
++                    de l'organisation. Scannez le QR code ci-contre pour vérifier son authenticité,
++                    ou consultez : {{ $verificationUrl }}
++                </td>
++                <td class="qr-cell">
++                    <img src="data:image/png;base64,{{ $qrCodeBase64 }}" alt="QR de vérification">
++                    <div class="qr-caption">Vérifier ce bulletin</div>
++                </td>
++            </tr>
++        </table>
++    </div>
++</body>
++</html>

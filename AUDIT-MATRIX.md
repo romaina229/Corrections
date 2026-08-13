@@ -95,3 +95,33 @@ Prochain module après validation : **Sorties employés** (archivage).
 ## Règle de sécurité du chantier
 
 Aucune correction n'est écrite dans `SDS-RH_backend/main` ou `SDS-RH_frontend/main`. Les propositions sont conservées dans `romaina229/Corrections` jusqu'à validation et intégration explicite.
+
+## Validation technique des patchs — audit du 2026-08-13
+
+Chaque `.patch` de ce dépôt a été testé avec `git apply --check` puis
+`git apply` réel sur une copie fraîche de `SDS-RH_backend` et
+`SDS-RH_frontend`, en cumulé et dans l'ordre indiqué. Les patchs 01,
+02, 03 et 10 avaient été déposés dans un format non standard (proche
+du format `apply_patch`, avec des en-têtes `@@` sans numéros de ligne
+et, pour plusieurs fichiers, un préfixe `+` parasite qui cassait le
+parsing `git apply` au-delà du premier fichier). Ils ont été
+intégralement réécrits au format `git diff` standard, testés, puis
+remplacés dans ce dépôt.
+
+| Patch | Statut au 2026-08-13 |
+|---|---|
+| `01-pdf-direct-download.patch` | ✅ Réécrit et validé — génère un vrai PDF (dompdf) avec logo tenant et QR code de vérification, `composer.json` mis à jour. |
+| `02-frontend-pdf-download.patch` | ✅ Réécrit et validé — téléchargement direct en `Blob` sur `Payrolls.tsx` et `MyPayslips.tsx`, fini `window.print()`. |
+| `03-portal-payslip-api.patch` (+ `03-portal-payslip-api-frontend.patch`) | ✅ Réécrit et validé — route `/portal/payslips/{payroll}/download` isolée par employé, client `portal.ts` mis à jour. |
+| `06` à `09` | ✅ Déjà valides depuis leur dépôt initial (aucune correction nécessaire). |
+| `10-employee-exits-backend.patch` | ✅ Réécrit et validé — migration `termination_type`/`termination_reason`, méthodes `exits()` et `terminate()`, route `/employees/exits` positionnée avant `/employees/{employee}`. `destroy()` existant conservé pour compatibilité, avec contrôle tenant explicite ajouté. |
+| `10-employee-exits-frontend.patch` | ✅ Réécrit et validé — page `EmployeeExits.tsx`, utilise le vrai endpoint `/employees/exits` (plus de contournement `status=terminated`). |
+| `10-employee-terminate-page.patch` | ✅ Réécrit et validé — page `EmployeeTerminate.tsx` + route `/employees/:id/terminate`. |
+| `10-employee-exits-integration.patch` (nouveau) | ✅ Ajouté — regroupe les changements transverses que le patch cassé ne portait pas correctement : `types/index.ts`, `api/employees.ts`, menu `Sidebar.tsx`, bouton « Sortir » dans `Employees.tsx` (remplace « Supprimer »). |
+| `11-attendance-*.patch` (3 fichiers) | ❌ **Toujours rejetés à 100%** (format non standard). Non retravaillés à ce stade — module Présence pas encore repris. |
+
+### Ordre d'application recommandé (testé cumulé, sans conflit)
+
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration`.
+
