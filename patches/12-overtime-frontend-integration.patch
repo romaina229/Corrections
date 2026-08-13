@@ -1,0 +1,39 @@
+diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
+index 77ca595..957c9d1 100644
+--- a/src/components/common/Sidebar.tsx
++++ b/src/components/common/Sidebar.tsx
+@@ -116,7 +116,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
+                     name: 'Présences',
+                     href: '/attendance',
+                     icon: ClockIcon,
+-                    permission: 'view_employees',
++                    permission: 'view_attendance',
++                },
++                {
++                    name: 'Heures supplémentaires',
++                    href: '/overtime',
++                    icon: ClockIcon,
++                    permission: 'view_attendance',
+                 },
+                 {
+                     name: 'Congés',
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index cd3703e..f23f93d 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -31,6 +31,7 @@ import Leaves from '../pages/leaves/Leaves';
+ import LeaveCreate from '../pages/leaves/LeaveCreate';
+ import Attendance from '../pages/attendance/Attendance';
+ import QRClock from '../pages/attendance/QRClock';
++import Overtime from '../pages/attendance/Overtime';
+ import Documents from '../pages/documents/Documents';
+ import Payrolls from '../pages/payroll/Payrolls';
+ import Recruitments from '../pages/recruitments/Recruitments';
+@@ -99,6 +100,7 @@ const AppRoutes = () => {
+                             {/* Présences */}
+                             <Route path="/attendance" element={<Attendance />} />
+                             <Route path="/attendance/qr" element={<QRClock />} />
++                            <Route path="/overtime" element={<Overtime />} />
+ 
+                             {/* Documents */}
+                             <Route path="/documents" element={<Documents />} />

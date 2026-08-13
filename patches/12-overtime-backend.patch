@@ -1,0 +1,129 @@
+diff --git a/app/Http/Controllers/Api/AttendanceController.php b/app/Http/Controllers/Api/AttendanceController.php
+index 2213aa3..db2707f 100644
+--- a/app/Http/Controllers/Api/AttendanceController.php
++++ b/app/Http/Controllers/Api/AttendanceController.php
+@@ -318,6 +318,111 @@ public function stats(Request $request)
+             ],
+         ]);
+     }
++
++    public function overtime(Request $request)
++    {
++        $data = $request->validate([
++            'month' => ['nullable', 'date_format:Y-m'],
++            'date_from' => ['nullable', 'date'],
++            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
++            'employee_id' => [
++                'nullable',
++                Rule::exists('employees', 'id')->where(
++                    fn ($q) => $q->where('tenant_id', app('tenant')->id)
++                ),
++            ],
++            'department_id' => [
++                'nullable',
++                Rule::exists('departments', 'id')->where(
++                    fn ($q) => $q->where('tenant_id', app('tenant')->id)
++                ),
++            ],
++            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
++        ]);
++
++        $query = Attendance::query()
++            ->with(['employee.user', 'employee.department'])
++            ->where('tenant_id', app('tenant')->id)
++            ->where('overtime_hours', '>', 0);
++
++        $this->restrictToCurrentEmployee($query);
++
++        if (! empty($data['month'])) {
++            $month = Carbon::createFromFormat('Y-m', $data['month']);
++            $query->whereBetween('date', [
++                $month->copy()->startOfMonth(),
++                $month->copy()->endOfMonth(),
++            ]);
++        }
++
++        if (! empty($data['date_from'])) {
++            $query->whereDate('date', '>=', $data['date_from']);
++        }
++
++        if (! empty($data['date_to'])) {
++            $query->whereDate('date', '<=', $data['date_to']);
++        }
++
++        if (! empty($data['department_id'])) {
++            $query->whereHas('employee', function ($q) use ($data) {
++                $q->where('department_id', $data['department_id']);
++            });
++        }
++
++        if (! empty($data['employee_id'])) {
++            // restrictToCurrentEmployee() a déjà appliqué la restriction employé.
++            $query->where('employee_id', $data['employee_id']);
++        }
++
++        $summaryQuery = clone $query;
++        $summary = [
++            'total_hours' => round((float) $summaryQuery->sum('overtime_hours'), 2),
++            'employees' => (clone $summaryQuery)->distinct('employee_id')->count('employee_id'),
++            'days' => (clone $summaryQuery)->distinct('date')->count('date'),
++        ];
++
++        $byEmployeeRows = (clone $query)
++            ->select('employee_id')
++            ->selectRaw('SUM(overtime_hours) as total_hours')
++            ->selectRaw('COUNT(*) as days')
++            ->groupBy('employee_id')
++            ->orderByDesc('total_hours')
++            ->get();
++
++        $employees = Employee::with('user')
++            ->whereIn('id', $byEmployeeRows->pluck('employee_id'))
++            ->get()
++            ->keyBy('id');
++
++        $byEmployee = $byEmployeeRows->map(function ($row) use ($employees) {
++            $employee = $employees->get($row->employee_id);
++
++            return [
++                'employee_id' => (int) $row->employee_id,
++                'employee' => $employee,
++                'total_hours' => round((float) $row->total_hours, 2),
++                'days' => (int) $row->days,
++            ];
++        })->values();
++
++        $paginator = $query
++            ->latest('date')
++            ->latest('id')
++            ->paginate(min((int) ($data['per_page'] ?? 50), 100));
++
++        return response()->json([
++            'data' => $paginator->items(),
++            'meta' => [
++                'current_page' => $paginator->currentPage(),
++                'last_page' => $paginator->lastPage(),
++                'per_page' => $paginator->perPage(),
++                'total' => $paginator->total(),
++            ],
++            'summary' => $summary,
++            'by_employee' => $byEmployee,
++        ]);
++    }
++
+     private function restrictToCurrentEmployee($query): void
+     {
+         $user = request()->user();
+diff --git a/routes/api.php b/routes/api.php
+index 7b2ad38..39b8771 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -136,6 +136,8 @@
+             Route::post('/scan/{qrCode}', [AttendanceController::class, 'scanQR']);
+         });
+ 
++        Route::middleware('permission:view_attendance')->get('/overtime', [AttendanceController::class, 'overtime']);
++
+         Route::prefix('organigram')->group(function () {
+             Route::get('/', [OrganizationChartController::class, 'index']);
+             Route::get('/tree', [OrganizationChartController::class, 'tree']);

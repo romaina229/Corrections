@@ -138,8 +138,27 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration`.
 
 ⚠️ Pour le frontend, l'ordre entre `09-frontend` et les trois patchs `10-employee-exits-*` est obligatoire (pas seulement recommandé) : ils modifient le même bloc de `Sidebar.tsx` et ont été rebasés les uns sur les autres dans cet ordre précis.
+
+## Module Heures supplémentaires (12) — état au dépôt du 2026-08-13
+
+Les spécifications `overtime/12-backend-overtime.patch.md` et
+`overtime/12-frontend-page.md` déposées précédemment étaient déjà du
+code PHP/TSX complet et correct dans un bloc markdown (contrairement
+aux modules 01/02/03/10/11, ce n'était pas un format de patch cassé,
+juste pas encore converti en `.patch` réel). Elles ont été converties
+telles quelles en patchs `git diff` fonctionnels, sans changement de
+logique :
+
+| Patch | Contenu |
+|---|---|
+| `12-overtime-backend.patch` | Route `GET /overtime` (racine, hors préfixe `/attendances`), méthode `AttendanceController::overtime()` : filtres mois/date/employé/département, isolation tenant, `restrictToCurrentEmployee()`, agrégats (total, employés, jours), regroupement par employé, pagination max 100. Aucun seuil d'heures supplémentaires n'est inventé — seul `overtime_hours` déjà enregistré est exploité. |
+| `12-overtime-frontend-page.patch` | Nouvelle page `Overtime.tsx` (TanStack Query), filtres Mois/Du/Au/Département, regroupement par employé cliquable, tableau détaillé, pagination sans reload, message d'accès refusé si `view_attendance` absent. |
+| `12-overtime-frontend-integration.patch` | Route `/overtime` dans `AppRoutes.tsx`, entrée de menu « Heures supplémentaires ». **Bug corrigé au passage** : le menu « Présences » utilisait la permission `view_employees` au lieu de `view_attendance` — un utilisateur avec accès aux présences mais pas à la fiche employé n'aurait pas vu le menu, et inversement. Corrigé pour correspondre à la permission réellement vérifiée par l'API. |
+
+Testé en application cumulée réelle avec l'intégralité de la chaîne
+01 → 12, backend et frontend, sans aucun conflit.
 
