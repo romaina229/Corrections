@@ -118,10 +118,28 @@ remplacés dans ce dépôt.
 | `10-employee-exits-frontend.patch` | ✅ Réécrit et validé — page `EmployeeExits.tsx`, utilise le vrai endpoint `/employees/exits` (plus de contournement `status=terminated`). |
 | `10-employee-terminate-page.patch` | ✅ Réécrit et validé — page `EmployeeTerminate.tsx` + route `/employees/:id/terminate`. |
 | `10-employee-exits-integration.patch` (nouveau) | ✅ Ajouté — regroupe les changements transverses que le patch cassé ne portait pas correctement : `types/index.ts`, `api/employees.ts`, menu `Sidebar.tsx`, bouton « Sortir » dans `Employees.tsx` (remplace « Supprimer »). |
-| `11-attendance-*.patch` (3 fichiers) | ❌ **Toujours rejetés à 100%** (format non standard). Non retravaillés à ce stade — module Présence pas encore repris. |
+| `11-attendance-*.patch` (3 fichiers) | ✅ Réécrits (2026-08-13, suite) et validés en cumulé avec 02/03/10. `Attendance.tsx` migré vers TanStack Query (plus de `fetchAttendance()` manuel, invalidation de query après clock-in/out), filtre département intégré directement (le patch séparé `11-attendance-department-filter.patch` est donc supprimé, devenu redondant), stats complètes (ajout Fériés/Congés + heures sup. dans le tableau), boutons `type="button"`. `QRClock.tsx` génère le QR 100% localement avec `qrcode.react` (fin de la dépendance à `api.qrserver.com`), `package.json` mis à jour. |
+| `11-attendance-double-clockin.patch` | ✅ Réécrit et validé — un second patch déposé après coup sur ce même module avait, lui aussi, des en-têtes `@@` avec des compteurs de lignes erronés (`corrupt patch at line 12`). Bug réel confirmé et corrigé : un double pointage d'entrée (`clockIn()` direct ou via `scanQR()`) renvoyait un statut 200 au lieu de 422, car `recordClockIn()` incluait la clé `attendance` aussi bien en cas de succès qu'en cas de doublon — ajout d'un flag `error` explicite désormais vérifié aux deux endroits. Correction d'une coquille de message au passage. |
 
-### Ordre d'application recommandé (testé cumulé, sans conflit)
+### Conflit détecté et résolu entre les patchs 09 et 10 (frontend)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration`.
+Les patchs `09-positions-frontend.patch` et `10-employee-exits-integration.patch`
+modifiaient tous les deux, indépendamment, le même bloc d'imports
+d'icônes de `Sidebar.tsx`. Les trois fichiers frontend du module 10
+(`10-employee-exits-frontend.patch`, `10-employee-terminate-page.patch`,
+`10-employee-exits-integration.patch`) ont été régénérés en rebasant
+leur base sur l'état obtenu **après** application du patch 09 —
+l'ordre d'application ci-dessous n'est donc plus seulement recommandé,
+il est **requis**.
+
+### Point métier volontairement non traité
+
+Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté backend existant sans règle journalière arbitraire imposée (pas de « 8h fixes » inventées) — conforme à la remarque du README `attendance/11-temps-presence-10-etapes-finales.md`. Un sous-module **Heures supplémentaires** dédié reste à faire séparément, une fois la règle de calcul validée avec vous.
+
+### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
+
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local`.
+
+⚠️ Pour le frontend, l'ordre entre `09-frontend` et les trois patchs `10-employee-exits-*` est obligatoire (pas seulement recommandé) : ils modifient le même bloc de `Sidebar.tsx` et ont été rebasés les uns sur les autres dans cet ordre précis.
 

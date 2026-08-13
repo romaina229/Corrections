@@ -117,19 +117,19 @@ index 0000000..e110fe8
 +
 +export default EmployeeTerminate;
 diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
-index cd3703e..7f3e9d2 100644
+index b8e410c..213ad95 100644
 --- a/src/routes/AppRoutes.tsx
 +++ b/src/routes/AppRoutes.tsx
-@@ -19,6 +19,8 @@ import AdminDashboard from '../pages/admin/AdminDashboard';
- import Dashboard from '../pages/dashboard/Dashboard';
- import Employees from '../pages/employees/Employees';
+@@ -21,6 +21,8 @@ import Employees from '../pages/employees/Employees';
  import EmployeeCreate from '../pages/employees/EmployeeCreate';
-+import EmployeeExits from '../pages/employees/EmployeeExits';
-+import EmployeeTerminate from '../pages/employees/EmployeeTerminate';
  import EmployeeEdit from '../pages/employees/EmployeeEdit';
  import EmployeeShow from '../pages/employees/EmployeeShow';
++import EmployeeExits from '../pages/employees/EmployeeExits';
++import EmployeeTerminate from '../pages/employees/EmployeeTerminate';
  import Departments from '../pages/departments/Departments';
-@@ -77,9 +79,11 @@ const AppRoutes = () => {
+ import Positions from '../pages/positions/Positions';
+ import Contracts from '../pages/contracts/Contracts';
+@@ -78,9 +80,11 @@ const AppRoutes = () => {
  
                              {/* Employés */}
                              <Route path="/employees" element={<Employees />} />

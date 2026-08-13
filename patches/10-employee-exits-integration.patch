@@ -16,18 +16,18 @@ index 7b47219..7c21e91 100644
      // Module carrière — chronologie complète d'un employé (vue RH/manager).
      history: {
 diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
-index 77ca595..dde65e3 100644
+index d6f676b..24fa426 100644
 --- a/src/components/common/Sidebar.tsx
 +++ b/src/components/common/Sidebar.tsx
-@@ -18,6 +18,7 @@ import {
-     BellIcon,
+@@ -19,6 +19,7 @@ import {
      TrophyIcon,
      DocumentCurrencyYenIcon,
+     IdentificationIcon,
 +    ArrowRightOnRectangleIcon,
      ChevronLeftIcon,
      ChevronRightIcon,
  } from '@heroicons/react/24/outline';
-@@ -83,6 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
+@@ -84,6 +85,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
                      icon: UsersIcon,
                      permission: 'view_employees',
                  },
