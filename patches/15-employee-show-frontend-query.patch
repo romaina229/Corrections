@@ -1,0 +1,136 @@
+diff --git a/src/pages/employees/EmployeeShow.tsx b/src/pages/employees/EmployeeShow.tsx
+index 20cb1a3..e95e3bb 100644
+--- a/src/pages/employees/EmployeeShow.tsx
++++ b/src/pages/employees/EmployeeShow.tsx
+@@ -1,5 +1,6 @@
+-import React, { useState, useEffect } from 'react';
++import React, { useState } from 'react';
+ import { useNavigate, useParams } from 'react-router-dom';
++import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+ import Card from '../../components/common/Card';
+ import Loading from '../../components/common/Loading';
+ import CareerTimeline from '../../components/employees/CareerTimeline';
+@@ -42,42 +43,53 @@ const EmployeeShow: React.FC = () => {
+     const { id } = useParams<{ id: string }>();
+     const navigate = useNavigate();
+     const { hasPermission } = useAuth();
+-    const [loading, setLoading] = useState<boolean>(true);
+-    const [employee, setEmployee] = useState<Employee | null>(null);
+-    const [history, setHistory] = useState<EmployeeHistory[]>([]);
+-    const [historyLoading, setHistoryLoading] = useState<boolean>(true);
++    const queryClient = useQueryClient();
++    const employeeId = Number(id);
+     const [showHistoryForm, setShowHistoryForm] = useState<boolean>(false);
+     const [savingHistory, setSavingHistory] = useState<boolean>(false);
+     const [historyForm, setHistoryForm] = useState<HistoryFormData>(emptyHistoryForm);
+ 
+-    useEffect(() => {
+-        fetchEmployee();
+-        fetchHistory();
+-    }, [id]);
++    const {
++        data: employee,
++        isPending: loading,
++        isError: employeeError,
++    } = useQuery<Employee>({
++        queryKey: ['employee', employeeId],
++        queryFn: async () => (await employees.show(employeeId)).data.employee,
++        enabled: Number.isFinite(employeeId),
++        staleTime: 60_000,
++    });
+ 
+-    const fetchEmployee = async (): Promise<void> => {
+-        try {
+-            const response = await employees.show(Number(id));
+-            setEmployee(response.data.employee);
+-        } catch (error) {
+-            toast.error('Erreur lors du chargement de l\'employé');
+-            navigate('/employees');
+-        } finally {
+-            setLoading(false);
+-        }
+-    };
++    const {
++        data: history = [],
++        isPending: historyLoading,
++    } = useQuery<EmployeeHistory[]>({
++        queryKey: ['employee-history', employeeId],
++        queryFn: async () => (await employees.history.list(employeeId)).data.data,
++        enabled: Number.isFinite(employeeId),
++        staleTime: 30_000,
++    });
+ 
+-    const fetchHistory = async (): Promise<void> => {
+-        setHistoryLoading(true);
+-        try {
+-            const response = await employees.history.list(Number(id));
+-            setHistory(response.data.data);
+-        } catch (error) {
+-            // Silencieux : l'historique est secondaire par rapport à la fiche.
+-        } finally {
+-            setHistoryLoading(false);
+-        }
+-    };
++    const invalidateHistory = (): Promise<void> =>
++        queryClient.invalidateQueries({ queryKey: ['employee-history', employeeId] });
++
++    const historyMutation = useMutation({
++        mutationFn: (payload: HistoryFormData) => employees.history.create(employeeId, {
++            type: payload.type,
++            title: payload.title,
++            description: payload.description || null,
++            effective_date: payload.effective_date,
++            new_salary: payload.new_salary ? Number(payload.new_salary) : null,
++        }),
++        onSuccess: async () => {
++            setHistoryForm(emptyHistoryForm);
++            setShowHistoryForm(false);
++            await invalidateHistory();
++        },
++        onError: (error: any) => {
++            toast.error(error.response?.data?.message || "Erreur lors de l'ajout de l'événement");
++        },
++    });
+ 
+     const handleAddHistory = async (e: React.FormEvent): Promise<void> => {
+         e.preventDefault();
+@@ -85,18 +97,9 @@ const EmployeeShow: React.FC = () => {
+ 
+         setSavingHistory(true);
+         try {
+-            await employees.history.create(Number(id), {
+-                type: historyForm.type,
+-                title: historyForm.title,
+-                description: historyForm.description || null,
+-                effective_date: historyForm.effective_date,
+-                new_salary: historyForm.new_salary ? Number(historyForm.new_salary) : null,
+-            });
+-            setHistoryForm(emptyHistoryForm);
+-            setShowHistoryForm(false);
+-            fetchHistory();
+-        } catch (error: any) {
+-            toast.error(error.response?.data?.message || "Erreur lors de l'ajout de l'événement");
++            await historyMutation.mutateAsync(historyForm);
++        } catch (error) {
++            // Déjà géré par onError de la mutation (toast affiché).
+         } finally {
+             setSavingHistory(false);
+         }
+@@ -142,7 +145,7 @@ const EmployeeShow: React.FC = () => {
+         if (!confirm('Supprimer cet événement de carrière ?')) return;
+         try {
+             await employees.history.delete(historyId);
+-            fetchHistory();
++            await invalidateHistory();
+         } catch (error) {
+             toast.error("Erreur lors de la suppression de l'événement");
+         }
+@@ -152,7 +155,7 @@ const EmployeeShow: React.FC = () => {
+         return <Loading fullScreen />;
+     }
+ 
+-    if (!employee) {
++    if (employeeError || !employee) {
+         return (
+             <div className="text-center py-12">
+                 <p className="text-gray-500">Employé non trouvé</p>

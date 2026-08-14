@@ -1,0 +1,182 @@
+diff --git a/src/pages/employees/Employees.tsx b/src/pages/employees/Employees.tsx
+index 9ba4b87..640b088 100644
+--- a/src/pages/employees/Employees.tsx
++++ b/src/pages/employees/Employees.tsx
+@@ -1,11 +1,12 @@
+-import React, { useState, useEffect } from 'react';
++import React, { useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
++import { useQuery } from '@tanstack/react-query';
+ import Card from '../../components/common/Card';
+ import Loading from '../../components/common/Loading';
+ import { employees } from '../../api/employees';
+ import { useAuth } from '../../context/AuthContext';
+-import type { Employee, PaginatedResponse } from '../../types';
+-import toast from 'react-hot-toast';
++import type { Employee, Department, PaginatedResponse } from '../../types';
++import axios from '../../api/axios';
+ import {
+     PlusIcon,
+     MagnifyingGlassIcon,
+@@ -24,14 +25,6 @@ interface Filters {
+ const Employees: React.FC = () => {
+     const navigate = useNavigate();
+     const { hasPermission } = useAuth();
+-    const [loading, setLoading] = useState<boolean>(true);
+-    const [employeesData, setEmployeesData] = useState<Employee[]>([]);
+-    const [pagination, setPagination] = useState({
+-        current_page: 1,
+-        last_page: 1,
+-        per_page: 15,
+-        total: 0,
+-    });
+     const [filters, setFilters] = useState<Filters>({
+         search: '',
+         department_id: '',
+@@ -39,28 +32,30 @@ const Employees: React.FC = () => {
+         page: 1,
+     });
+ 
+-    useEffect(() => {
+-        fetchEmployees();
+-    }, [filters]);
++    const employeesQuery = useQuery({
++        queryKey: ['employees', filters],
++        queryFn: async () => (await employees.list(filters)).data as PaginatedResponse<Employee>,
++        staleTime: 30_000,
++        placeholderData: (previous) => previous,
++        refetchOnWindowFocus: false,
++    });
+ 
+-    const fetchEmployees = async (): Promise<void> => {
+-        setLoading(true);
+-        try {
+-            const response = await employees.list(filters);
+-            const data = response.data as PaginatedResponse<Employee>;
+-            setEmployeesData(data.data);
+-            setPagination({
+-                current_page: data.current_page,
+-                last_page: data.last_page,
+-                per_page: data.per_page,
+-                total: data.total,
+-            });
+-        } catch (error) {
+-            toast.error('Erreur lors du chargement des employés');
+-        } finally {
+-            setLoading(false);
++    const departmentsQuery = useQuery({
++        queryKey: ['departments', 'list'],
++        queryFn: async () => (await axios.get<Department[]>('/departments')).data,
++        staleTime: 5 * 60 * 1000,
++    });
++
++    const employeesData = employeesQuery.data?.data ?? [];
++    const pagination = employeesQuery.data
++        ? {
++            current_page: employeesQuery.data.current_page,
++            last_page: employeesQuery.data.last_page,
++            per_page: employeesQuery.data.per_page,
++            total: employeesQuery.data.total,
+         }
+-    };
++        : { current_page: 1, last_page: 1, per_page: 15, total: 0 };
++    const departments = departmentsQuery.data ?? [];
+ 
+     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
+         setFilters({
+@@ -71,16 +66,17 @@ const Employees: React.FC = () => {
+     };
+ 
+     const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+-        if (e.key === 'Enter') {
+-            fetchEmployees();
+-        }
++        // Le changement de filters déclenche déjà la requête (queryKey inclut
++        // filters). Aucun fetch manuel nécessaire, on évite juste la
++        // soumission implicite d'un formulaire parent éventuel.
++        if (e.key === 'Enter') e.preventDefault();
+     };
+ 
+     const handlePageChange = (page: number): void => {
+         setFilters({ ...filters, page });
+     };
+ 
+-    if (loading && employeesData.length === 0) {
++    if (employeesQuery.isPending) {
+         return <Loading fullScreen />;
+     }
+ 
+@@ -96,6 +92,7 @@ const Employees: React.FC = () => {
+                 </div>
+                 {hasPermission('create_employees') && (
+                     <button
++                        type="button"
+                         onClick={() => navigate('/employees/create')}
+                         className="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                     >
+@@ -132,6 +129,9 @@ const Employees: React.FC = () => {
+                             className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                         >
+                             <option value="">Tous les départements</option>
++                            {departments.map((dept) => (
++                                <option key={dept.id} value={dept.id}>{dept.name}</option>
++                            ))}
+                         </select>
+                         <select
+                             name="status"
+@@ -149,7 +149,7 @@ const Employees: React.FC = () => {
+                 </div>
+             </Card>
+ 
+-            {/* Tableau */}
++            {/* Liste */}
+             <Card>
+                 <div className="overflow-x-auto">
+                     <table className="min-w-full divide-y divide-gray-200">
+@@ -215,6 +215,7 @@ const Employees: React.FC = () => {
+                                     </td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                         <button
++                                            type="button"
+                                             onClick={() => navigate(`/employees/${employee.id}`)}
+                                             className="text-primary-600 hover:text-primary-900 mr-3"
+                                         >
+@@ -222,6 +223,7 @@ const Employees: React.FC = () => {
+                                         </button>
+                                         {hasPermission('edit_employees') && (
+                                             <button
++                                                type="button"
+                                                 onClick={() => navigate(`/employees/${employee.id}/edit`)}
+                                                 className="text-blue-600 hover:text-blue-900 mr-3"
+                                             >
+@@ -250,6 +252,7 @@ const Employees: React.FC = () => {
+                     <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200 sm:px-6">
+                         <div className="flex-1 flex justify-between sm:hidden">
+                             <button
++                                type="button"
+                                 onClick={() => handlePageChange(pagination.current_page - 1)}
+                                 disabled={pagination.current_page === 1}
+                                 className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+@@ -257,6 +260,7 @@ const Employees: React.FC = () => {
+                                 Précédent
+                             </button>
+                             <button
++                                type="button"
+                                 onClick={() => handlePageChange(pagination.current_page + 1)}
+                                 disabled={pagination.current_page === pagination.last_page}
+                                 className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+@@ -278,6 +282,7 @@ const Employees: React.FC = () => {
+                                         const pageNum = i + 1;
+                                         return (
+                                             <button
++                                                type="button"
+                                                 key={i}
+                                                 onClick={() => handlePageChange(pageNum)}
+                                                 className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+@@ -300,4 +305,4 @@ const Employees: React.FC = () => {
+     );
+ };
+ 
+-export default Employees;
+\ No newline at end of file
++export default Employees;

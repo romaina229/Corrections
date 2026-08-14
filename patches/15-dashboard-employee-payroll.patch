@@ -1,0 +1,23 @@
+diff --git a/app/Http/Controllers/Api/DashboardController.php b/app/Http/Controllers/Api/DashboardController.php
+index 366801a..9b8cd59 100644
+--- a/app/Http/Controllers/Api/DashboardController.php
++++ b/app/Http/Controllers/Api/DashboardController.php
+@@ -37,6 +37,10 @@ public function index()
+                 ->where('status', 'active')
+                 ->first();
+ 
++            $payrollTotal = Payroll::where('employee_id', $employee->id)
++                ->where('month', now()->format('Y-m'))
++                ->value('net_salary');
++
+             return response()->json([
+                 'stats' => [
+                     'total_employees' => 1,
+@@ -47,6 +51,7 @@ public function index()
+                     'pending_leaves' => $pendingLeaves,
+                     'new_hires' => $employee->hire_date && $employee->hire_date->gte(now()->subDays(30)) ? 1 : 0,
+                     'contracts_expiring' => $activeContract?->end_date?->lte(now()->addDays(30)) ? 1 : 0,
++                    'payroll_total' => (int) ($payrollTotal ?? 0),
+                 ],
+                 'department_distribution' => $employee->department
+                     ? [['name' => $employee->department->name, 'count' => 1]]

@@ -44,6 +44,8 @@ git apply /chemin/vers/Corrections/patches/10-employee-exits-backend.patch
 git apply /chemin/vers/Corrections/patches/11-attendance-double-clockin.patch
 git apply /chemin/vers/Corrections/patches/12-overtime-backend.patch
 git apply /chemin/vers/Corrections/patches/13-leaves-backend.patch
+git apply /chemin/vers/Corrections/patches/15-employees-backend-tenant.patch
+git apply /chemin/vers/Corrections/patches/15-dashboard-employee-payroll.patch
 
 composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2
 php artisan migrate
@@ -75,6 +77,10 @@ git apply /chemin/vers/Corrections/patches/13-leaves-frontend-list.patch
 git apply /chemin/vers/Corrections/patches/13-leaves-frontend-create.patch
 git apply /chemin/vers/Corrections/patches/13-leaves-frontend-show.patch
 git apply /chemin/vers/Corrections/patches/14-dashboard-stats-frontend.patch
+git apply /chemin/vers/Corrections/patches/15-employees-frontend-query-filter.patch
+git apply /chemin/vers/Corrections/patches/15-employee-show-frontend-query.patch
+git apply /chemin/vers/Corrections/patches/15-dashboard-frontend-query.patch
+git apply /chemin/vers/Corrections/patches/15-spa-navigation-guard.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -126,6 +132,13 @@ compte des patchs précédents dans cette séquence exacte.
 
 **Dashboard (14)**
 - [ ] Les 9 cartes s'affichent avec des valeurs cohérentes
+
+**Module 15 — corrections transverses**
+- [ ] Filtre département sur la liste Employés : les options se chargent réellement et filtrent la liste
+- [ ] En tant qu'employé standard, le Dashboard personnel affiche bien un montant de paie du mois (`payroll_total`), pas seulement en vue admin
+- [ ] Un utilisateur du tenant B reçoit 404 sur `GET /employees/{id}` et `PUT /employees/{id}` d'un employé du tenant A (déjà testé en module 06/07/08, à revérifier ici puisque `show`/`update` avaient un contrôle tenant manquant jusqu'à ce module)
+- [ ] Créer un employé avec un `department_id` appartenant à un autre tenant (via l'API directement) → doit être refusé en validation
+- [ ] Cliquer un lien `<a href="/...">` interne resté non migré (s'il en existe encore) → doit naviguer en SPA, sans rechargement complet de page (vérifier dans les DevTools réseau : pas de requête de document HTML)
 
 ## En cas d'échec d'un `git apply`
 

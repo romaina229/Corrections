@@ -1,0 +1,93 @@
+diff --git a/src/pages/dashboard/Dashboard.tsx b/src/pages/dashboard/Dashboard.tsx
+index 4ed6ec6..1833254 100644
+--- a/src/pages/dashboard/Dashboard.tsx
++++ b/src/pages/dashboard/Dashboard.tsx
+@@ -1,4 +1,5 @@
+-import React, { useState, useEffect } from 'react';
++import React from 'react';
++import { useQuery } from '@tanstack/react-query';
+ import { useAuth } from '../../context/AuthContext';
+ import Loading from '../../components/common/Loading';
+ import StatsCards from '../../components/dashboard/StatsCards';
+@@ -8,7 +9,6 @@ import RecentActivities from '../../components/dashboard/RecentActivities';
+ import OrganizationBanner from '../../components/dashboard/OrganizationBanner';
+ import { dashboard } from '../../api/dashboard';
+ import type { DashboardStats } from '../../types';
+-import toast from 'react-hot-toast';
+ 
+ interface DashboardData {
+     stats: DashboardStats;
+@@ -20,40 +20,42 @@ interface DashboardData {
+ 
+ const Dashboard: React.FC = () => {
+     const { user } = useAuth();
+-    const [loading, setLoading] = useState<boolean>(true);
+-    const [data, setData] = useState<DashboardData>({
+-        stats: {} as DashboardStats,
+-        department_distribution: [],
+-        hiring_trend: [],
+-        attendance_today: {},
+-        recent_activities: [],
+-    });
+ 
+-    useEffect(() => {
+-        fetchDashboardData();
+-    }, []);
++    const { data, isPending, isError, refetch } = useQuery<DashboardData>({
++        queryKey: ['dashboard'],
++        queryFn: async () => (await dashboard.index()).data,
++        staleTime: 60_000,
++        refetchOnWindowFocus: false,
++        retry: 1,
++    });
+ 
+-    const fetchDashboardData = async (): Promise<void> => {
+-        try {
+-            const response = await dashboard.index();
+-            setData(response.data);
+-        } catch (error) {
+-            toast.error('Erreur lors du chargement du tableau de bord');
+-        } finally {
+-            setLoading(false);
+-        }
+-    };
++    if (isError) {
++        return (
++            <div className="min-h-[50vh] flex items-center justify-center">
++                <div className="text-center">
++                    <p className="text-gray-600 mb-4">Impossible de charger le tableau de bord.</p>
++                    <button
++                        type="button"
++                        onClick={() => refetch()}
++                        className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
++                    >
++                        Réessayer
++                    </button>
++                </div>
++            </div>
++        );
++    }
+ 
+-    if (loading) {
++    if (isPending || !data) {
+         return <Loading fullScreen />;
+     }
+ 
+     return (
+         <div className="space-y-6">
+-            
++
+             {/* AJOUT : bandeau avec le nom de l'organisation connectée */}
+             <OrganizationBanner />
+-            
++
+             <div>
+                 <h1 className="text-2xl font-bold text-gray-900">
+                     Bonjour, {user?.first_name} 👋
+@@ -74,4 +76,4 @@ const Dashboard: React.FC = () => {
+     );
+ };
+ 
+-export default Dashboard;
+\ No newline at end of file
++export default Dashboard;

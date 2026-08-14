@@ -122,7 +122,46 @@ racine de ce dépôt.
 
 Aucune correction n'est écrite dans `SDS-RH_backend/main` ou `SDS-RH_frontend/main`. Les propositions sont conservées dans `romaina229/Corrections` jusqu'à validation et intégration explicite.
 
-## Validation technique des patchs — audit du 2026-08-13
+## Éléments hors patchs numérotés — audit et intégration (module 15, 2026-08-14)
+
+En plus des patchs 01 à 14, le dépôt contenait des dossiers non
+encore convertis en `.patch` valides ou jamais vérifiés contre le
+code source réel : `dashboard/01-03`, `employees/01-04`,
+`frontend/01-spa-navigation`, `backend/app/Services/PayslipPdfService.php`.
+Audit complet effectué :
+
+| Élément | Verdict |
+|---|---|
+| `backend/app/Services/PayslipPdfService.php` | Redondant — déjà intégralement repris dans `01-pdf-direct-download.patch`. Aucune action. |
+| `dashboard/02-stats-cards.patch` | Redondant — déjà couvert par `14-dashboard-stats-frontend.patch` (grille et libellés légèrement différents, fonctionnellement équivalent ou supérieur). Aucune action. |
+| `employees/01`, `03` | Convertis en `15-employees-frontend-query-filter.patch` |
+| `employees/02` | Converti en `15-employees-backend-tenant.patch` |
+| `employees/04` | Converti en `15-employee-show-frontend-query.patch` |
+| `dashboard/01` | Converti en `15-dashboard-frontend-query.patch` |
+| `dashboard/03` | Converti en `15-dashboard-employee-payroll.patch` |
+| `frontend/01-spa-navigation` | Converti en `15-spa-navigation-guard.patch` |
+
+### Détail des 6 patchs du module 15
+
+| Patch | Contenu |
+|---|---|
+| `15-employees-backend-tenant.patch` | **Bug réel confirmé** : `EmployeeController::store()` ne scopait pas la validation `department_id`/`position_id` au tenant courant (contrairement à `update()`, qui le faisait déjà) — un identifiant existant chez un autre tenant pouvait être accepté à la création. Corrigé. Contrôle tenant explicite ajouté sur `show()` et `update()` (absent malgré le tout premier checkpoint « Employés ✅ » du projet — ces deux méthodes ne s'appuyaient jusqu'ici que sur le scope global implicite). |
+| `15-dashboard-employee-payroll.patch` | **Bug réel confirmé** : `DashboardController::index()`, branche self-service employé, n'incluait pas `payroll_total` dans les stats retournées — contrairement à la branche admin/manager. Un employé consultant son propre tableau de bord ne voyait donc jamais son propre montant de paie du mois. Corrigé. |
+| `15-employees-frontend-query-filter.patch` | `Employees.tsx` migré vers TanStack Query. **Filtre département enfin fonctionnel** : le `<select>` n'était jamais alimenté (`<option value="">Tous les départements</option>` seul, aucune liste réelle). Tous les boutons passés en `type="button"`. Reconstruit en tenant compte du bouton « Sortir » déjà posé par le module 10 (pas de régression). |
+| `15-employee-show-frontend-query.patch` | `EmployeeShow.tsx` migré vers TanStack Query (fiche employé + historique de carrière + mutation d'ajout d'événement), en préservant les téléchargements Documents/Contrats déjà ajoutés par les modules 06/07. |
+| `15-dashboard-frontend-query.patch` | `Dashboard.tsx` migré vers TanStack Query, avec état d'erreur explicite et bouton « Réessayer » au lieu d'un simple toast silencieux. |
+| `15-spa-navigation-guard.patch` | Nouveau composant `SpaNavigationGuard.tsx` monté au niveau racine (`AppRoutes.tsx`) : intercepte les clics sur les liens `<a href="/...">` internes qui n'ont pas encore été migrés vers `Link`/`navigate()`, pour éviter un rechargement complet de page. Ignore explicitement les téléchargements, nouveaux onglets, ancres, liens externes et endpoints `/api/`. |
+
+### Validation
+
+- **20/20 patchs frontend** (02 → 15) appliqués en cumulé réel sur
+  une copie fraîche de `SDS-RH_frontend`.
+- **10 patchs backend de base + 2 patchs 15** appliqués en cumulé
+  réel sur une copie fraîche de `SDS-RH_backend`.
+- **`tsc -b --force` sur le frontend complet (01 → 15) : 0 erreur.**
+- **`oxlint` : 0 erreur**, 6 avertissements cosmétiques préexistants
+  sans rapport avec ces patchs (dont un dans `EmployeeEdit.tsx`, non
+  modifié ici).
 
 Chaque `.patch` de ce dépôt a été testé avec `git apply --check` puis
 `git apply` réel sur une copie fraîche de `SDS-RH_backend` et
@@ -164,8 +203,8 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard`.
 
 ⚠️ Pour le frontend, l'ordre entre `09-frontend` et les trois patchs `10-employee-exits-*` est obligatoire (pas seulement recommandé) : ils modifient le même bloc de `Sidebar.tsx` et ont été rebasés les uns sur les autres dans cet ordre précis.
 

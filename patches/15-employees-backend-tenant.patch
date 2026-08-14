@@ -1,0 +1,47 @@
+diff --git a/app/Http/Controllers/Api/EmployeeController.php b/app/Http/Controllers/Api/EmployeeController.php
+index 550863c..4df675d 100644
+--- a/app/Http/Controllers/Api/EmployeeController.php
++++ b/app/Http/Controllers/Api/EmployeeController.php
+@@ -52,8 +52,16 @@ public function store(Request $request, EmployeeHistoryService $historyService)
+             'last_name' => 'required|string|max:255',
+             'email' => 'required|email|unique:users,email',
+             'phone' => 'nullable|string|max:20',
+-            'department_id' => 'nullable|exists:departments,id',
+-            'position_id' => 'nullable|exists:positions,id',
++            'department_id' => [
++                'nullable',
++                Rule::exists('departments', 'id')
++                    ->where(fn ($q) => $q->where('tenant_id', app('tenant')->id)),
++            ],
++            'position_id' => [
++                'nullable',
++                Rule::exists('positions', 'id')
++                    ->where(fn ($q) => $q->where('tenant_id', app('tenant')->id)),
++            ],
+             'hire_date' => 'required|date',
+             'birth_date' => 'nullable|date|before:today',
+             'gender' => 'nullable|in:male,female,other',
+@@ -145,6 +153,11 @@ public function store(Request $request, EmployeeHistoryService $historyService)
+ 
+     public function show(Employee $employee)
+     {
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         return response()->json([
+             'employee' => $employee->load([
+                 'user',
+@@ -163,6 +176,11 @@ public function show(Employee $employee)
+ 
+     public function update(Request $request, Employee $employee, EmployeeHistoryService $historyService)
+     {
++        abort_unless(
++            (int) $employee->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $request->validate([
+             'first_name' => 'sometimes|string|max:255',
+             'last_name' => 'sometimes|string|max:255',
