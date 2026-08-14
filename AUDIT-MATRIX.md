@@ -92,6 +92,32 @@ Prochain module après validation : **Postes** (menu Organisation).
 Détail et critères de validation : `positions/README.md`.
 Prochain module après validation : **Sorties employés** (archivage).
 
+## Validation automatisée finale (2026-08-13)
+
+Une passe de validation complète a été exécutée directement contre
+le contenu poussé dans ce dépôt (et non contre des fichiers
+intermédiaires) :
+
+- **26/26 patchs** (10 backend + 16 frontend) appliqués avec succès
+  via `git apply` réel, dans l'ordre officiel ci-dessus, sur des
+  copies fraîches de `SDS-RH_backend` et `SDS-RH_frontend`.
+- **Contrôle de typage TypeScript strict** (`tsc -b --force`) sur le
+  frontend complet une fois les 16 patchs appliqués : une erreur
+  réelle trouvée et corrigée (`Payrolls.tsx`, cast `content-type` en
+  `string` — le type Axios `AxiosHeaderValue` n'était pas assignable
+  au paramètre `Blob`). `patches/02-frontend-pdf-download.patch` mis
+  à jour en conséquence et re-testé : 0 erreur.
+- **Lint** (`oxlint`) : 0 erreur, 4 avertissements cosmétiques sans
+  impact fonctionnel (paramètre `catch (error)` non utilisé).
+- Aucun outil PHP n'étant disponible dans cet environnement de
+  préparation, `php -l` sur les fichiers backend modifiés n'a pas pu
+  être exécuté ici — à faire en priorité dans votre environnement
+  (commande fournie dans `VALIDATION-GUIDE.md`).
+
+Guide de validation détaillé, procédure d'intégration et checklist
+de test manuel module par module : voir `VALIDATION-GUIDE.md` à la
+racine de ce dépôt.
+
 ## Règle de sécurité du chantier
 
 Aucune correction n'est écrite dans `SDS-RH_backend/main` ou `SDS-RH_frontend/main`. Les propositions sont conservées dans `romaina229/Corrections` jusqu'à validation et intégration explicite.
