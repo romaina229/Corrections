@@ -139,9 +139,23 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
 Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend`.
 
 ⚠️ Pour le frontend, l'ordre entre `09-frontend` et les trois patchs `10-employee-exits-*` est obligatoire (pas seulement recommandé) : ils modifient le même bloc de `Sidebar.tsx` et ont été rebasés les uns sur les autres dans cet ordre précis.
+
+## Module Dashboard complet (14) — état au dépôt du 2026-08-13
+
+L'API `/dashboard` calcule déjà 9 indicateurs mais `StatsCards.tsx`
+n'en affichait que 6 — `absent_today`, `new_hires` et
+`contracts_expiring` étaient calculés côté backend puis ignorés côté
+UI, exactement comme relevé dans l'anomalie n°5 de l'audit initial.
+
+| Patch | Contenu |
+|---|---|
+| `14-dashboard-stats-frontend.patch` | Ajout des 3 cartes manquantes : Absents aujourd'hui, Nouvelles embauches (30j), Contrats à échéance (30j). Grille repassée de `xl:grid-cols-6` (6 cartes) à `lg:grid-cols-3` (9 cartes, 3×3 équilibré). Aucune modification backend nécessaire : les champs existaient déjà dans la réponse API et dans le type `DashboardStats` du frontend. |
+
+Testé en application cumulée réelle avec l'intégralité de la chaîne
+02 → 14 frontend, sans aucun conflit.
 
 ## Module Congés / Absences (13) — état au dépôt du 2026-08-13
 

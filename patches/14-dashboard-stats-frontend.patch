@@ -1,0 +1,54 @@
+diff --git a/src/components/dashboard/StatsCards.tsx b/src/components/dashboard/StatsCards.tsx
+index d0e5f61..cc0ba6c 100644
+--- a/src/components/dashboard/StatsCards.tsx
++++ b/src/components/dashboard/StatsCards.tsx
+@@ -8,6 +8,9 @@ import {
+     CurrencyDollarIcon,
+     ClockIcon,
+     DocumentTextIcon,
++    UserMinusIcon,
++    UserPlusIcon,
++    ExclamationTriangleIcon,
+ } from '@heroicons/react/24/outline';
+ 
+ interface StatsCardsProps {
+@@ -48,12 +51,30 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
+             icon: ClockIcon,
+             color: 'bg-green-50',
+         },
++        {
++            title: 'Absents aujourd\'hui',
++            value: stats?.absent_today || 0,
++            icon: UserMinusIcon,
++            color: 'bg-red-50',
++        },
+         {
+             title: 'Congés en attente',
+             value: stats?.pending_leaves || 0,
+             icon: CalendarIcon,
+             color: 'bg-warning-50',
+         },
++        {
++            title: 'Nouvelles embauches (30j)',
++            value: stats?.new_hires || 0,
++            icon: UserPlusIcon,
++            color: 'bg-teal-50',
++        },
++        {
++            title: 'Contrats à échéance (30j)',
++            value: stats?.contracts_expiring || 0,
++            icon: ExclamationTriangleIcon,
++            color: 'bg-orange-50',
++        },
+         {
+             title: 'Masse salariale',
+             value: stats?.payroll_total ? `${stats.payroll_total.toLocaleString()} FCFA` : '0 FCFA',
+@@ -64,7 +85,7 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
+     ];
+ 
+     return (
+-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
++        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+             {cards.map((card, index) => (
+                 <Card key={index} className="hover:shadow-md transition-shadow">
+                     <div className="flex items-center justify-between">
