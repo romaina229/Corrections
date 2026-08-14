@@ -138,10 +138,33 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show`.
 
 ⚠️ Pour le frontend, l'ordre entre `09-frontend` et les trois patchs `10-employee-exits-*` est obligatoire (pas seulement recommandé) : ils modifient le même bloc de `Sidebar.tsx` et ont été rebasés les uns sur les autres dans cet ordre précis.
+
+## Module Congés / Absences (13) — état au dépôt du 2026-08-13
+
+Les fichiers `leaves/13-absences-conges-audit.md` et
+`leaves/13-corrections-prioritaires.md` étaient des audits texte
+(pas de code cassé cette fois), très bien ciblés. Convertis en 4
+patchs `.patch` réels :
+
+| Patch | Contenu |
+|---|---|
+| `13-leaves-backend.patch` | Isolation tenant explicite sur `index`, `approve`, `reject` (`assertEmployeeAccess()` déjà appelée par `show`/`update`/`destroy` étendue avec le contrôle tenant). Pièce jointe réellement stockée dans `store()` (stockage privé `leaves/{tenant}/{employee}`) avec contrainte de type MIME. Nouvelle méthode `downloadAttachment()` + route `GET /leaves/{leave}/attachment`. Suppression d'une route `GET /leaves/{leave}` déclarée deux fois dans `routes/api.php`. |
+| `13-leaves-frontend-list.patch` | `Leaves.tsx` migré vers TanStack Query, pagination Laravel enfin branchée (elle était intégralement commentée), bouton Voir désormais navigable (`onClick` manquant), boutons `type="button"`, `invalidateQueries` après approbation/rejet au lieu de rappeler `fetchLeaves()`. |
+| `13-leaves-frontend-create.patch` | **Bug critique corrigé** : `onSubmit()` remplaçait systématiquement `employee_id` par celui du compte connecté, même quand un RH/manager avait sélectionné un autre employé dans le formulaire — une demande pouvait donc être soumise pour la mauvaise personne. Un employé standard utilise désormais son propre dossier (comme avant), un RH/manager autorisé utilise l'employé qu'il a réellement sélectionné. Ajout du champ pièce jointe (`multipart/form-data`). L'estimation locale de jours (`Math.abs`) reste affichée mais explicitement labellisée comme estimation — le serveur reste seul juge du nombre de jours final. |
+| `13-leaves-frontend-show.patch` | Nouvelle page `LeaveShow.tsx` (détail, motif de rejet, téléchargement de pièce jointe en `Blob`, actions Approuver/Rejeter), route `/leaves/:id`. |
+
+Aucune règle de solde n'a été modifiée (24 jours annuels / 10 jours
+maladie par défaut conservés tels quels, conformément à la consigne
+de prudence des deux audits) et aucune fonctionnalité d'annulation
+n'a été ajoutée (règle métier non spécifiée par le cahier des
+charges à ce stade).
+
+Testé en application cumulée réelle avec l'intégralité de la chaîne
+01 → 13, backend et frontend, sans aucun conflit.
 
 ## Module Heures supplémentaires (12) — état au dépôt du 2026-08-13
 

@@ -1,0 +1,111 @@
+diff --git a/app/Http/Controllers/Api/LeaveController.php b/app/Http/Controllers/Api/LeaveController.php
+index b7cb4ac..c4c19a2 100644
+--- a/app/Http/Controllers/Api/LeaveController.php
++++ b/app/Http/Controllers/Api/LeaveController.php
+@@ -15,7 +15,8 @@ class LeaveController extends Controller
+ {
+     public function index(Request $request)
+     {
+-        $query = Leave::with(['employee.user', 'approver']);
++        $query = Leave::where('tenant_id', app('tenant')->id)
++            ->with(['employee.user', 'approver']);
+ 
+         if ($request->user()->hasRole('employee') && $request->user()->employee) {
+             $query->where('employee_id', $request->user()->employee->id);
+@@ -57,7 +58,7 @@ public function store(Request $request)
+             'start_date' => 'required|date|after_or_equal:today',
+             'end_date' => 'required|date|after_or_equal:start_date',
+             'reason' => 'nullable|string',
+-            'attachment' => 'nullable|file|max:5120', // 5MB
++            'attachment' => 'nullable|file|max:5120|mimes:pdf,jpg,jpeg,png,doc,docx', // 5MB
+         ]);
+ 
+         if ($request->user()->hasRole('employee')) {
+@@ -101,6 +102,12 @@ public function store(Request $request)
+             'days' => $days,
+             'reason' => $request->reason,
+             'status' => 'pending',
++            'attachment' => $request->hasFile('attachment')
++                ? $request->file('attachment')->store(
++                    'leaves/' . app('tenant')->id . '/' . $request->employee_id,
++                    'local'
++                )
++                : null,
+         ]);
+ 
+         return response()->json([
+@@ -169,6 +176,11 @@ public function destroy(Leave $leave)
+ 
+     public function approve(Request $request, Leave $leave)
+     {
++        abort_unless(
++            (int) $leave->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         if ($leave->status !== 'pending') {
+             return response()->json([
+                 'message' => 'Cette demande a déjà été traitée',
+@@ -218,6 +230,11 @@ public function approve(Request $request, Leave $leave)
+ 
+     public function reject(Request $request, Leave $leave)
+     {
++        abort_unless(
++            (int) $leave->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         if ($leave->status !== 'pending') {
+             return response()->json([
+                 'message' => 'Cette demande a déjà été traitée'
+@@ -241,6 +258,24 @@ public function reject(Request $request, Leave $leave)
+         ]);
+     }
+ 
++    public function downloadAttachment(Leave $leave)
++    {
++        $this->assertEmployeeAccess($leave);
++
++        abort_unless(
++            $leave->attachment && \Illuminate\Support\Facades\Storage::disk('local')->exists($leave->attachment),
++            404,
++            'Pièce jointe introuvable.'
++        );
++
++        $extension = pathinfo($leave->attachment, PATHINFO_EXTENSION) ?: 'pdf';
++
++        return response()->download(
++            \Illuminate\Support\Facades\Storage::disk('local')->path($leave->attachment),
++            'piece-jointe-conge-' . $leave->id . '.' . $extension
++        );
++    }
++
+     public function pending()
+     {
+         $leaves = Leave::with(['employee.user'])
+@@ -304,6 +339,11 @@ public function stats()
+ 
+     private function assertEmployeeAccess(Leave $leave): void
+     {
++        abort_unless(
++            (int) $leave->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
+         $user = request()->user();
+ 
+         if ($user?->hasRole('employee') && (int) $user->employee?->id !== (int) $leave->employee_id) {
+diff --git a/routes/api.php b/routes/api.php
+index 39b8771..37df13d 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -120,8 +120,8 @@
+         });
+         Route::post('/leaves', [LeaveController::class, 'store'])->middleware('permission:create_leaves');
+         Route::put('/leaves/{leave}', [LeaveController::class, 'update'])->middleware('permission:edit_leaves');
+-        Route::get('/leaves/{leave}', [LeaveController::class, 'show'])->middleware('permission:view_leaves');
+         Route::delete('/leaves/{leave}', [LeaveController::class, 'destroy'])->middleware('permission:delete_leaves');
++        Route::get('/leaves/{leave}/attachment', [LeaveController::class, 'downloadAttachment'])->middleware('permission:view_leaves');
+         Route::post('/leaves/{leave}/approve', [LeaveController::class, 'approve'])->middleware('permission:approve_leaves');
+         Route::post('/leaves/{leave}/reject', [LeaveController::class, 'reject'])->middleware('permission:approve_leaves');
+ 

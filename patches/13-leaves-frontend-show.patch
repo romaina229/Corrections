@@ -1,0 +1,226 @@
+diff --git a/src/pages/leaves/LeaveShow.tsx b/src/pages/leaves/LeaveShow.tsx
+new file mode 100644
+index 0000000..ce712d1
+--- /dev/null
++++ b/src/pages/leaves/LeaveShow.tsx
+@@ -0,0 +1,200 @@
++import React from 'react';
++import { useNavigate, useParams } from 'react-router-dom';
++import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
++import Card from '../../components/common/Card';
++import Loading from '../../components/common/Loading';
++import { useAuth } from '../../context/AuthContext';
++import toast from 'react-hot-toast';
++import axios from '../../api/axios';
++import type { Leave } from '../../types';
++import { ArrowLeftIcon, ArrowDownTrayIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
++
++const STATUS_COLORS: Record<string, string> = {
++    pending: 'bg-yellow-100 text-yellow-800',
++    approved: 'bg-green-100 text-green-800',
++    rejected: 'bg-red-100 text-red-800',
++    cancelled: 'bg-gray-100 text-gray-800',
++};
++
++const STATUS_LABELS: Record<string, string> = {
++    pending: 'En attente',
++    approved: 'Approuvé',
++    rejected: 'Rejeté',
++    cancelled: 'Annulé',
++};
++
++const TYPE_LABELS: Record<string, string> = {
++    annual: 'Annuel',
++    sick: 'Maladie',
++    maternity: 'Maternité',
++    paternity: 'Paternité',
++    exceptional: 'Exceptionnel',
++    unpaid: 'Sans solde',
++    training: 'Formation',
++};
++
++const LeaveShow: React.FC = () => {
++    const { id } = useParams<{ id: string }>();
++    const navigate = useNavigate();
++    const { hasPermission } = useAuth();
++    const queryClient = useQueryClient();
++
++    const leaveQuery = useQuery({
++        queryKey: ['leaves', 'detail', id],
++        queryFn: async () => (await axios.get<{ leave: Leave }>(`/leaves/${id}`)).data.leave,
++        enabled: !!id,
++    });
++
++    const invalidate = (): Promise<void> =>
++        queryClient.invalidateQueries({ queryKey: ['leaves'] });
++
++    const approveMutation = useMutation({
++        mutationFn: () => axios.post(`/leaves/${id}/approve`),
++        onSuccess: async () => {
++            toast.success('Congé approuvé avec succès');
++            await invalidate();
++        },
++        onError: (error: any) => toast.error(error.response?.data?.message || "Erreur lors de l'approbation"),
++    });
++
++    const rejectMutation = useMutation({
++        mutationFn: (reason: string) => axios.post(`/leaves/${id}/reject`, { rejection_reason: reason }),
++        onSuccess: async () => {
++            toast.success('Congé rejeté');
++            await invalidate();
++        },
++        onError: (error: any) => toast.error(error.response?.data?.message || 'Erreur lors du rejet'),
++    });
++
++    const handleReject = (): void => {
++        const reason = window.prompt('Motif du rejet :');
++        if (reason === null || reason.trim() === '') return;
++        rejectMutation.mutate(reason);
++    };
++
++    const downloadAttachment = async (): Promise<void> => {
++        try {
++            const response = await axios.get(`/leaves/${id}/attachment`, { responseType: 'blob' });
++            const url = window.URL.createObjectURL(new Blob([response.data]));
++            const link = document.createElement('a');
++            link.href = url;
++            link.download = `piece-jointe-conge-${id}`;
++            document.body.appendChild(link);
++            link.click();
++            link.remove();
++            window.URL.revokeObjectURL(url);
++        } catch (error) {
++            toast.error('Erreur lors du téléchargement de la pièce jointe');
++        }
++    };
++
++    if (leaveQuery.isLoading) {
++        return <Loading fullScreen />;
++    }
++
++    const leave = leaveQuery.data;
++
++    if (!leave) {
++        return (
++            <Card>
++                <p className="text-center text-gray-500 py-8">Demande de congé introuvable.</p>
++            </Card>
++        );
++    }
++
++    return (
++        <div className="max-w-3xl mx-auto space-y-6">
++            <button
++                type="button"
++                onClick={() => navigate('/leaves')}
++                className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
++            >
++                <ArrowLeftIcon className="h-4 w-4 mr-1" />
++                Retour aux congés
++            </button>
++
++            <div className="flex items-center justify-between">
++                <div>
++                    <h1 className="text-2xl font-bold text-gray-900">
++                        {leave.employee?.user?.first_name} {leave.employee?.user?.last_name}
++                    </h1>
++                    <p className="text-gray-500 mt-1">
++                        Demande {TYPE_LABELS[leave.type] || leave.type} — {leave.days} jour(s)
++                    </p>
++                </div>
++                <span className={`px-3 py-1 text-sm font-semibold rounded-full ${STATUS_COLORS[leave.status]}`}>
++                    {STATUS_LABELS[leave.status] || leave.status}
++                </span>
++            </div>
++
++            <Card>
++                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
++                    <div>
++                        <p className="text-gray-500">Date de début</p>
++                        <p className="font-medium text-gray-900">{new Date(leave.start_date).toLocaleDateString('fr-FR')}</p>
++                    </div>
++                    <div>
++                        <p className="text-gray-500">Date de fin</p>
++                        <p className="font-medium text-gray-900">{new Date(leave.end_date).toLocaleDateString('fr-FR')}</p>
++                    </div>
++                    <div className="md:col-span-2">
++                        <p className="text-gray-500">Motif</p>
++                        <p className="font-medium text-gray-900">{leave.reason || '—'}</p>
++                    </div>
++                    {leave.status === 'rejected' && leave.rejection_reason && (
++                        <div className="md:col-span-2">
++                            <p className="text-gray-500">Motif du rejet</p>
++                            <p className="font-medium text-danger-700">{leave.rejection_reason}</p>
++                        </div>
++                    )}
++                    {leave.approver && (
++                        <div className="md:col-span-2">
++                            <p className="text-gray-500">Traité par</p>
++                            <p className="font-medium text-gray-900">
++                                {leave.approver.first_name} {leave.approver.last_name}
++                                {leave.approval_date ? ` — ${new Date(leave.approval_date).toLocaleDateString('fr-FR')}` : ''}
++                            </p>
++                        </div>
++                    )}
++                    {leave.attachment && (
++                        <div className="md:col-span-2">
++                            <button
++                                type="button"
++                                onClick={downloadAttachment}
++                                className="inline-flex items-center px-3 py-2 text-sm font-medium text-primary-600 border border-primary-600 rounded-md hover:bg-primary-50"
++                            >
++                                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
++                                Télécharger la pièce jointe
++                            </button>
++                        </div>
++                    )}
++                </div>
++
++                {leave.status === 'pending' && hasPermission('approve_leaves') && (
++                    <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
++                        <button
++                            type="button"
++                            onClick={handleReject}
++                            disabled={rejectMutation.isPending}
++                            className="inline-flex items-center px-4 py-2 text-sm font-medium text-danger-700 border border-danger-300 rounded-md hover:bg-danger-50 disabled:opacity-50"
++                        >
++                            <XMarkIcon className="h-4 w-4 mr-2" />
++                            Rejeter
++                        </button>
++                        <button
++                            type="button"
++                            onClick={() => approveMutation.mutate()}
++                            disabled={approveMutation.isPending}
++                            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50"
++                        >
++                            <CheckIcon className="h-4 w-4 mr-2" />
++                            Approuver
++                        </button>
++                    </div>
++                )}
++            </Card>
++        </div>
++    );
++};
++
++export default LeaveShow;
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index 5cc766c..958545e 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -32,6 +32,7 @@ import ContractShow from '../pages/contracts/ContractShow';
+ import Notifications from '../pages/notifications/Notifications';
+ import Leaves from '../pages/leaves/Leaves';
+ import LeaveCreate from '../pages/leaves/LeaveCreate';
++import LeaveShow from '../pages/leaves/LeaveShow';
+ import Attendance from '../pages/attendance/Attendance';
+ import QRClock from '../pages/attendance/QRClock';
+ import Overtime from '../pages/attendance/Overtime';
+@@ -102,6 +103,7 @@ const AppRoutes = () => {
+                             {/* Congés */}
+                             <Route path="/leaves" element={<Leaves />} />
+                             <Route path="/leaves/create" element={<LeaveCreate />} />
++                            <Route path="/leaves/:id" element={<LeaveShow />} />
+ 
+                             {/* Présences */}
+                             <Route path="/attendance" element={<Attendance />} />
