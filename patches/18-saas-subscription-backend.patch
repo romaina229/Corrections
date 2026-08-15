@@ -1,0 +1,119 @@
+diff --git a/app/Http/Controllers/Api/SubscriptionController.php b/app/Http/Controllers/Api/SubscriptionController.php
+new file mode 100644
+index 0000000..e79f366
+--- /dev/null
++++ b/app/Http/Controllers/Api/SubscriptionController.php
+@@ -0,0 +1,50 @@
++<?php
++
++namespace App\Http\Controllers\Api;
++
++use App\Http\Controllers\Controller;
++use Carbon\Carbon;
++
++class SubscriptionController extends Controller
++{
++    public function show()
++    {
++        $tenant = app('tenant');
++        $subscription = $tenant->current_subscription;
++
++        $seatLimit = $tenant->seatLimit();
++        $occupiedSeats = $tenant->occupiedSeats();
++
++        $daysRemaining = $tenant->subscription_expires_at
++            ? (int) Carbon::now()->diffInDays($tenant->subscription_expires_at, false)
++            : null;
++
++        return response()->json([
++            'tenant' => [
++                'name' => $tenant->name,
++                'is_active' => $tenant->is_active,
++                'subscription_plan' => $tenant->subscription_plan,
++                'subscription_expires_at' => $tenant->subscription_expires_at,
++            ],
++            'subscription' => $subscription ? [
++                'plan' => $subscription->plan,
++                'price' => $subscription->price,
++                'currency' => $subscription->currency,
++                'billing_cycle' => $subscription->billing_cycle,
++                'start_date' => $subscription->start_date,
++                'end_date' => $subscription->end_date,
++                'status' => $subscription->status,
++                'payment_method' => $subscription->payment_method,
++                'is_active' => $subscription->isActive(),
++            ] : null,
++            'usage' => [
++                'employees_used' => $occupiedSeats,
++                'employees_limit' => $seatLimit,
++                'seats_available' => $seatLimit === null ? null : max(0, $seatLimit - $occupiedSeats),
++                'is_at_limit' => $seatLimit !== null && $occupiedSeats >= $seatLimit,
++            ],
++            'days_remaining' => $daysRemaining,
++            'is_trial' => (bool) ($subscription?->features['trial'] ?? false),
++        ]);
++    }
++}
+diff --git a/app/Models/Tenant.php b/app/Models/Tenant.php
+index e2be126..140448f 100644
+--- a/app/Models/Tenant.php
++++ b/app/Models/Tenant.php
+@@ -111,4 +111,37 @@ public function getPayslipHeaderNameAttribute(): string
+     {
+         return $this->emitting_authority ?: $this->name;
+     }
++
++    /**
++     * Nombre maximal de sièges employés autorisés par le plan en
++     * cours, ou null si aucune limite ne s'applique (plan entreprise
++     * ou plan inconnu — on ne bloque jamais par excès de prudence).
++     */
++    public function seatLimit(): ?int
++    {
++        $features = $this->current_subscription?->features;
++
++        if (is_array($features) && array_key_exists('employee_limit_max', $features)) {
++            return $features['employee_limit_max'];
++        }
++
++        foreach (config('sds_rh.plans') as $plan) {
++            if ($plan['db_name'] === $this->subscription_plan) {
++                return $plan['max'] === PHP_INT_MAX ? null : $plan['max'];
++            }
++        }
++
++        return null;
++    }
++
++    /**
++     * Sièges employés occupés : tout employé qui n'est pas
++     * définitivement sorti de l'organisation compte pour un siège.
++     */
++    public function occupiedSeats(): int
++    {
++        return $this->employees()
++            ->whereIn('status', ['active', 'on_leave', 'suspended'])
++            ->count();
++    }
+ }
+\ No newline at end of file
+diff --git a/routes/api.php b/routes/api.php
+index 6082136..b25b6ce 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -20,6 +20,7 @@
+ use App\Http\Controllers\Api\RecruitmentController;
+ use App\Http\Controllers\Api\ReportController;
+ use App\Http\Controllers\Api\SettingsController;
++use App\Http\Controllers\Api\SubscriptionController;
+ use App\Http\Controllers\Api\TrainingController;
+ use App\Http\Controllers\Api\UserController;
+ use App\Http\Controllers\Api\RoleController;
+@@ -224,6 +225,7 @@
+             Route::get('/settings', [SettingsController::class, 'index']);
+             Route::put('/settings', [SettingsController::class, 'update']);
+             Route::post('/settings/logo', [SettingsController::class, 'updateLogo']);
++            Route::get('/subscription', [SubscriptionController::class, 'show']);
+         });
+         Route::put('/profile', [SettingsController::class, 'updateProfile']);
+ 

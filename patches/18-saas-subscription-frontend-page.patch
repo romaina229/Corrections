@@ -1,0 +1,227 @@
+diff --git a/src/pages/settings/Subscription.tsx b/src/pages/settings/Subscription.tsx
+new file mode 100644
+index 0000000..7339e37
+--- /dev/null
++++ b/src/pages/settings/Subscription.tsx
+@@ -0,0 +1,182 @@
++import React from 'react';
++import { useQuery } from '@tanstack/react-query';
++import Card from '../../components/common/Card';
++import Loading from '../../components/common/Loading';
++import axios from '../../api/axios';
++import type { SubscriptionInfo } from '../../types';
++import { CheckCircleIcon, ExclamationTriangleIcon, UsersIcon, CalendarIcon } from '@heroicons/react/24/outline';
++
++const PLAN_LABELS: Record<string, string> = {
++    gratuit: 'Gratuit',
++    starter: 'Starter',
++    standard: 'Standard',
++    business: 'Business',
++    enterprise: 'Entreprise',
++};
++
++const Subscription: React.FC = () => {
++    const { data, isPending } = useQuery({
++        queryKey: ['subscription'],
++        queryFn: async () => (await axios.get<SubscriptionInfo>('/subscription')).data,
++        staleTime: 60_000,
++    });
++
++    if (isPending) {
++        return <Loading fullScreen />;
++    }
++
++    if (!data) {
++        return (
++            <Card>
++                <p className="text-center text-gray-500 py-8">Impossible de charger votre abonnement.</p>
++            </Card>
++        );
++    }
++
++    const { tenant, subscription, usage, days_remaining, is_trial } = data;
++    const planLabel = PLAN_LABELS[tenant.subscription_plan] || tenant.subscription_plan;
++    const usagePercent = usage.employees_limit
++        ? Math.min(100, Math.round((usage.employees_used / usage.employees_limit) * 100))
++        : 0;
++
++    return (
++        <div className="space-y-6">
++            <div>
++                <h1 className="text-2xl font-bold text-gray-900">Mon abonnement</h1>
++                <p className="text-gray-500 mt-1">Plan, usage et échéance de votre organisation</p>
++            </div>
++
++            {usage.is_at_limit && (
++                <Card>
++                    <div className="flex items-start gap-3 text-danger-700">
++                        <ExclamationTriangleIcon className="h-6 w-6 flex-shrink-0" />
++                        <div>
++                            <p className="font-medium">Limite d'employés atteinte</p>
++                            <p className="text-sm text-danger-600 mt-1">
++                                Votre forfait {planLabel} est limité à {usage.employees_limit} employé(s).
++                                Contactez-nous pour passer à un forfait supérieur.
++                            </p>
++                        </div>
++                    </div>
++                </Card>
++            )}
++
++            {days_remaining !== null && days_remaining <= 7 && days_remaining >= 0 && (
++                <Card>
++                    <div className="flex items-start gap-3 text-yellow-700">
++                        <ExclamationTriangleIcon className="h-6 w-6 flex-shrink-0" />
++                        <p className="text-sm">
++                            Votre abonnement expire dans {days_remaining} jour{days_remaining > 1 ? 's' : ''}.
++                        </p>
++                    </div>
++                </Card>
++            )}
++
++            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
++                <Card>
++                    <p className="text-sm text-gray-500">Plan actuel</p>
++                    <p className="text-xl font-bold text-gray-900 mt-1">{planLabel}</p>
++                    {is_trial && (
++                        <span className="inline-block mt-2 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
++                            Période d'essai
++                        </span>
++                    )}
++                </Card>
++                <Card>
++                    <p className="text-sm text-gray-500">Statut</p>
++                    <div className="flex items-center gap-2 mt-1">
++                        {tenant.is_active ? (
++                            <CheckCircleIcon className="h-5 w-5 text-green-600" />
++                        ) : (
++                            <ExclamationTriangleIcon className="h-5 w-5 text-danger-600" />
++                        )}
++                        <span className="text-xl font-bold text-gray-900">
++                            {tenant.is_active ? 'Actif' : 'Inactif'}
++                        </span>
++                    </div>
++                </Card>
++                <Card>
++                    <p className="text-sm text-gray-500 flex items-center gap-1">
++                        <CalendarIcon className="h-4 w-4" /> Expire le
++                    </p>
++                    <p className="text-xl font-bold text-gray-900 mt-1">
++                        {tenant.subscription_expires_at
++                            ? new Date(tenant.subscription_expires_at).toLocaleDateString('fr-FR')
++                            : '—'}
++                    </p>
++                </Card>
++            </div>
++
++            <Card>
++                <div className="flex items-center justify-between mb-3">
++                    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
++                        <UsersIcon className="h-5 w-5 text-gray-400" />
++                        Employés utilisés
++                    </h3>
++                    <span className="text-sm text-gray-600">
++                        {usage.employees_used} / {usage.employees_limit ?? '∞'}
++                    </span>
++                </div>
++                {usage.employees_limit !== null && (
++                    <div className="w-full bg-gray-100 rounded-full h-2.5">
++                        <div
++                            className={`h-2.5 rounded-full ${usagePercent >= 100 ? 'bg-danger-500' : usagePercent >= 80 ? 'bg-yellow-500' : 'bg-primary-600'}`}
++                            style={{ width: `${usagePercent}%` }}
++                        />
++                    </div>
++                )}
++                {usage.seats_available !== null && (
++                    <p className="text-xs text-gray-400 mt-2">
++                        {usage.seats_available} siège(s) disponible(s) sur votre forfait actuel
++                    </p>
++                )}
++            </Card>
++
++            {subscription && (
++                <Card>
++                    <h3 className="text-sm font-semibold text-gray-700 mb-4">Détail de la souscription</h3>
++                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
++                        <div>
++                            <dt className="text-gray-500">Cycle de facturation</dt>
++                            <dd className="font-medium text-gray-900 capitalize">{subscription.billing_cycle}</dd>
++                        </div>
++                        <div>
++                            <dt className="text-gray-500">Prix</dt>
++                            <dd className="font-medium text-gray-900">
++                                {subscription.price
++                                    ? `${Number(subscription.price).toLocaleString()} ${subscription.currency}`
++                                    : 'Sur devis'}
++                            </dd>
++                        </div>
++                        <div>
++                            <dt className="text-gray-500">Début</dt>
++                            <dd className="font-medium text-gray-900">
++                                {new Date(subscription.start_date).toLocaleDateString('fr-FR')}
++                            </dd>
++                        </div>
++                        <div>
++                            <dt className="text-gray-500">Fin</dt>
++                            <dd className="font-medium text-gray-900">
++                                {new Date(subscription.end_date).toLocaleDateString('fr-FR')}
++                            </dd>
++                        </div>
++                        {subscription.payment_method && (
++                            <div>
++                                <dt className="text-gray-500">Mode de paiement</dt>
++                                <dd className="font-medium text-gray-900 capitalize">{subscription.payment_method}</dd>
++                            </div>
++                        )}
++                    </dl>
++                </Card>
++            )}
++
++            <Card>
++                <p className="text-sm text-gray-500">
++                    Besoin de changer de forfait ou de renouveler votre abonnement ? Contactez notre équipe.
++                </p>
++            </Card>
++        </div>
++    );
++};
++
++export default Subscription;
+diff --git a/src/types/index.ts b/src/types/index.ts
+index 163597f..337647d 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -18,6 +18,34 @@ export interface Tenant {
+   updated_at: string;
+ }
+ 
++export interface SubscriptionInfo {
++  tenant: {
++    name: string;
++    is_active: boolean;
++    subscription_plan: string;
++    subscription_expires_at?: string;
++  };
++  subscription: {
++    plan: string;
++    price?: number;
++    currency: string;
++    billing_cycle: string;
++    start_date: string;
++    end_date: string;
++    status: string;
++    payment_method?: string;
++    is_active: boolean;
++  } | null;
++  usage: {
++    employees_used: number;
++    employees_limit: number | null;
++    seats_available: number | null;
++    is_at_limit: boolean;
++  };
++  days_remaining: number | null;
++  is_trial: boolean;
++}
++
+ export interface User {
+   id: number;
+   tenant_id: number;

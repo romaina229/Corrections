@@ -1,0 +1,45 @@
+diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
+index 0eed9b5..0a03e3b 100644
+--- a/src/components/common/Sidebar.tsx
++++ b/src/components/common/Sidebar.tsx
+@@ -21,6 +21,7 @@ import {
+     IdentificationIcon,
+     ArrowRightOnRectangleIcon,
+     ShieldCheckIcon,
++    CreditCardIcon,
+     ChevronLeftIcon,
+     ChevronRightIcon,
+ } from '@heroicons/react/24/outline';
+@@ -213,6 +214,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
+                     icon: CogIcon,
+                     permission: 'view_settings',
+                 },
++                {
++                    name: 'Mon abonnement',
++                    href: '/subscription',
++                    icon: CreditCardIcon,
++                    permission: 'view_settings',
++                },
+             ],
+         },
+     ];
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index 975eb9b..67c0970 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -43,6 +43,7 @@ import Recruitments from '../pages/recruitments/Recruitments';
+ import Trainings from '../pages/trainings/Trainings';
+ import Reports from '../pages/reports/Reports';
+ import Settings from '../pages/settings/Settings';
++import Subscription from '../pages/settings/Subscription';
+ import Users from '../pages/admin/Users';
+ import Roles from '../pages/admin/Roles';
+ import Profile from '../pages/settings/Profile';
+@@ -135,6 +136,7 @@ const AppRoutes = () => {
+ 
+                             {/* Paramètres */}
+                             <Route path="/settings" element={<Settings />} />
++                            <Route path="/subscription" element={<Subscription />} />
+                             <Route path="/users" element={<Users />} />
+                             <Route path="/roles" element={<Roles />} />
+                             <Route path="/profile" element={<Profile />} />

@@ -52,6 +52,8 @@ git apply /chemin/vers/Corrections/patches/16-admin-role-controller.patch
 git apply /chemin/vers/Corrections/patches/16-admin-routes-and-auth.patch
 git apply /chemin/vers/Corrections/patches/17-reports-export-service.patch
 git apply /chemin/vers/Corrections/patches/17-reports-controller.patch
+git apply /chemin/vers/Corrections/patches/18-saas-subscription-backend.patch
+git apply /chemin/vers/Corrections/patches/18-saas-seat-limit.patch
 
 composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2 phpoffice/phpspreadsheet:^3.5
 php artisan migrate
@@ -93,6 +95,8 @@ git apply /chemin/vers/Corrections/patches/16-admin-frontend-users-page.patch
 git apply /chemin/vers/Corrections/patches/16-admin-frontend-roles-page.patch
 git apply /chemin/vers/Corrections/patches/16-admin-frontend-integration.patch
 git apply /chemin/vers/Corrections/patches/17-reports-frontend.patch
+git apply /chemin/vers/Corrections/patches/18-saas-subscription-frontend-page.patch
+git apply /chemin/vers/Corrections/patches/18-saas-subscription-frontend-integration.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -172,6 +176,13 @@ compte des patchs précédents dans cette séquence exacte.
 - [ ] Générer le rapport Paie (sélecteur de mois, plus de plage de dates) en PDF et Excel
 - [ ] Générer le rapport Congés en PDF → vérifier que le détail par type de congé apparaît bien dans le résumé
 - [ ] Vérifier qu'aucune fenêtre d'impression ne s'ouvre plus (comportement `window.print()` entièrement retiré)
+
+**Module 18 — Préparation SaaS (limite de sièges + espace client)**
+- [ ] Sur un tenant au forfait gratuit (5 employés max), créer des employés jusqu'à la limite → le 6e doit être refusé avec un message clair (422)
+- [ ] Faire sortir un employé (module 10) sur un tenant à la limite → un siège doit se libérer immédiatement (vérifier qu'un nouvel employé peut être créé juste après)
+- [ ] Page « Mon abonnement » : vérifier que la barre d'usage des sièges reflète le bon compte
+- [ ] Faire expirer manuellement `subscription_expires_at` dans les 7 prochains jours pour un tenant de test → l'alerte d'expiration proche doit apparaître
+- [ ] Vérifier qu'un tenant au forfait « enterprise » n'a jamais de limite affichée ni appliquée
 
 ## En cas d'échec d'un `git apply`
 
