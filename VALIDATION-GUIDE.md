@@ -50,8 +50,10 @@ git apply /chemin/vers/Corrections/patches/16-admin-migrations.patch
 git apply /chemin/vers/Corrections/patches/16-admin-user-controller.patch
 git apply /chemin/vers/Corrections/patches/16-admin-role-controller.patch
 git apply /chemin/vers/Corrections/patches/16-admin-routes-and-auth.patch
+git apply /chemin/vers/Corrections/patches/17-reports-export-service.patch
+git apply /chemin/vers/Corrections/patches/17-reports-controller.patch
 
-composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2
+composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2 phpoffice/phpspreadsheet:^3.5
 php artisan migrate
 php artisan db:seed --class=RolePermissionSeeder
 php -l app/Http/Controllers/Api/*.php   # sanity check syntaxe
@@ -90,6 +92,7 @@ git apply /chemin/vers/Corrections/patches/16-admin-frontend-api.patch
 git apply /chemin/vers/Corrections/patches/16-admin-frontend-users-page.patch
 git apply /chemin/vers/Corrections/patches/16-admin-frontend-roles-page.patch
 git apply /chemin/vers/Corrections/patches/16-admin-frontend-integration.patch
+git apply /chemin/vers/Corrections/patches/17-reports-frontend.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -162,6 +165,13 @@ compte des patchs précédents dans cette séquence exacte.
 - [ ] Créer un rôle personnalisé avec quelques permissions, l'attribuer à un utilisateur, vérifier que l'accès aux menus correspond exactement aux permissions choisies
 - [ ] Tenter de modifier ou supprimer un rôle système (`admin_org`, `manager`...) → doit être refusé (403)
 - [ ] Créer un rôle personnalisé avec le même nom depuis deux tenants différents → doit fonctionner sans conflit (test d'isolation le plus important de ce module)
+
+**Module 17 — Rapports / Exports**
+- [ ] Générer le rapport Employés en PDF → fichier réel téléchargé, résumé + tableau lisibles
+- [ ] Générer le rapport Présences en Excel → fichier `.xlsx` réel (pas un `.csv` renommé), 2 feuilles (Résumé, Détail)
+- [ ] Générer le rapport Paie (sélecteur de mois, plus de plage de dates) en PDF et Excel
+- [ ] Générer le rapport Congés en PDF → vérifier que le détail par type de congé apparaît bien dans le résumé
+- [ ] Vérifier qu'aucune fenêtre d'impression ne s'ouvre plus (comportement `window.print()` entièrement retiré)
 
 ## En cas d'échec d'un `git apply`
 

@@ -1,0 +1,274 @@
+diff --git a/src/pages/reports/Reports.tsx b/src/pages/reports/Reports.tsx
+index a627ba3..5bf3be8 100644
+--- a/src/pages/reports/Reports.tsx
++++ b/src/pages/reports/Reports.tsx
+@@ -13,6 +13,16 @@ import {
+ 
+ type ReportType = 'employees' | 'attendance' | 'payroll' | 'leaves';
+ 
++const MIME_TYPES: Record<'pdf' | 'excel', string> = {
++    pdf: 'application/pdf',
++    excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
++};
++
++const EXTENSIONS: Record<'pdf' | 'excel', string> = {
++    pdf: 'pdf',
++    excel: 'xlsx',
++};
++
+ const Reports: React.FC = () => {
+     const { hasPermission } = useAuth();
+     const [loading, setLoading] = useState<boolean>(false);
+@@ -23,6 +33,7 @@ const Reports: React.FC = () => {
+             .split('T')[0],
+         end_date: new Date().toISOString().split('T')[0],
+     });
++    const [month, setMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+     const [format, setFormat] = useState<'pdf' | 'excel'>('pdf');
+ 
+     const reports = [
+@@ -32,16 +43,8 @@ const Reports: React.FC = () => {
+         { type: 'leaves', label: 'Congés', icon: ChartBarIcon, permission: 'view_leaves' },
+     ];
+ 
+-    const escapeHtml = (value: unknown): string =>
+-        String(value ?? '')
+-            .replace(/&/g, '&amp;')
+-            .replace(/</g, '&lt;')
+-            .replace(/>/g, '&gt;')
+-            .replace(/"/g, '&quot;')
+-            .replace(/'/g, '&#039;');
+-
+     const generateReport = async (): Promise<void> => {
+-        if (new Date(dateRange.start_date) > new Date(dateRange.end_date)) {
++        if (reportType !== 'payroll' && new Date(dateRange.start_date) > new Date(dateRange.end_date)) {
+             toast.error('La date de début doit précéder la date de fin');
+             return;
+         }
+@@ -49,114 +52,27 @@ const Reports: React.FC = () => {
+         setLoading(true);
+ 
+         try {
++            const params = reportType === 'payroll'
++                ? { month, format }
++                : { ...dateRange, format };
++
+             const response = await axios.get(`/reports/${reportType}`, {
+-                params: {
+-                    ...dateRange,
+-                    format,
+-                },
++                params,
++                responseType: 'blob',
+             });
+ 
+-            const payload = response.data;
+-            const rows = payload[reportType] || [];
+-
+-            if (format === 'excel') {
+-                const normalizedRows = rows.map((row: Record<string, unknown>) => ({
+-                    id: row.id ?? '',
+-                    nom: row.user
+-                        ? `${(row.user as Record<string, unknown>).first_name ?? ''} ${(row.user as Record<string, unknown>).last_name ?? ''}`.trim()
+-                        : row.employee_id ?? '',
+-                    departement: row.department
+-                        ? (row.department as Record<string, unknown>).name ?? ''
+-                        : '',
+-                    statut: row.status ?? '',
+-                    date: row.date ?? row.hire_date ?? row.start_date ?? row.month ?? '',
+-                }));
+-
+-                const headers = Object.keys(normalizedRows[0] || {
+-                    id: '',
+-                    nom: '',
+-                    departement: '',
+-                    statut: '',
+-                    date: '',
+-                });
+-
+-                const csv = [
+-                    headers.join(';'),
+-                    ...normalizedRows.map((row: Record<string, unknown>) =>
+-                        headers.map((header) =>
+-                            `"${String(row[header] ?? '').replace(/"/g, '""')}"`
+-                        ).join(';')
+-                    ),
+-                ].join('\n');
+-
+-                const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+-                const url = window.URL.createObjectURL(blob);
+-                const link = document.createElement('a');
+-                link.href = url;
+-                link.download = `rapport_${reportType}_${dateRange.start_date}_${dateRange.end_date}.csv`;
+-                document.body.appendChild(link);
+-                link.click();
+-                link.remove();
+-                window.URL.revokeObjectURL(url);
+-
+-                toast.success('Rapport Excel/CSV généré avec succès');
+-                return;
+-            }
+-
+-            const printable = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=800');
+-
+-            if (!printable) {
+-                toast.error('Autorisez les fenêtres contextuelles pour imprimer le rapport');
+-                return;
+-            }
+-
+-            const title = reports.find((report) => report.type === reportType)?.label || 'Rapport';
+-            const summary = payload.summary
+-                ? `<pre>${JSON.stringify(payload.summary, null, 2)}</pre>`
+-                : '';
+-
+-            const tableRows = rows.slice(0, 500).map((row: Record<string, unknown>) => `
+-                <tr>
+-                    <td>${escapeHtml(row.id)}</td>
+-                    <td>${escapeHtml(row.user ? `${String((row.user as Record<string, unknown>).first_name ?? '')} ${String((row.user as Record<string, unknown>).last_name ?? '')}` : '')}</td>
+-                    <td>${escapeHtml(row.status)}</td>
+-                    <td>${escapeHtml(row.date ?? row.hire_date ?? row.start_date ?? row.month ?? '')}</td>
+-                </tr>
+-            `).join('');
+-
+-            printable.document.write(`
+-                <!doctype html>
+-                <html lang="fr">
+-                <head>
+-                    <meta charset="utf-8">
+-                    <title>${title} — SDS-RH</title>
+-                    <style>
+-                        body { font-family: Arial, sans-serif; margin: 40px; color: #111827; }
+-                        h1 { margin-bottom: 4px; }
+-                        .muted { color: #6b7280; margin-bottom: 24px; }
+-                        pre { background: #f3f4f6; padding: 16px; border-radius: 8px; white-space: pre-wrap; }
+-                        table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+-                        th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+-                        th { background: #f3f4f6; }
+-                        @media print { body { margin: 15mm; } }
+-                    </style>
+-                </head>
+-                <body>
+-                    <h1>${title}</h1>
+-                    <div class="muted">SDS-RH · ${dateRange.start_date} au ${dateRange.end_date}</div>
+-                    ${summary}
+-                    <table>
+-                        <thead><tr><th>ID</th><th>Employé</th><th>Statut</th><th>Date/Période</th></tr></thead>
+-                        <tbody>${tableRows}</tbody>
+-                    </table>
+-                </body>
+-                </html>
+-            `);
+-            printable.document.close();
+-            printable.focus();
+-            printable.onload = () => printable.print();
+-
+-            toast.success('Rapport prêt à être enregistré en PDF');
++            const blob = new Blob([response.data], { type: MIME_TYPES[format] });
++            const url = window.URL.createObjectURL(blob);
++            const link = document.createElement('a');
++            link.href = url;
++            const period = reportType === 'payroll' ? month : `${dateRange.start_date}_${dateRange.end_date}`;
++            link.download = `rapport_${reportType}_${period}.${EXTENSIONS[format]}`;
++            document.body.appendChild(link);
++            link.click();
++            link.remove();
++            window.URL.revokeObjectURL(url);
++
++            toast.success(`Rapport ${format === 'pdf' ? 'PDF' : 'Excel'} généré avec succès`);
+         } catch (error: any) {
+             toast.error(error.response?.data?.message || 'Erreur lors de la génération du rapport');
+         } finally {
+@@ -164,7 +80,6 @@ const Reports: React.FC = () => {
+         }
+     };
+ 
+-
+     return (
+         <div className="space-y-6">
+             <div>
+@@ -183,6 +98,7 @@ const Reports: React.FC = () => {
+                             }
+                             return (
+                                 <button
++                                    type="button"
+                                     key={report.type}
+                                     onClick={() => setReportType(report.type as ReportType)}
+                                     className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+@@ -203,24 +119,38 @@ const Reports: React.FC = () => {
+                 <Card>
+                     <h3 className="text-lg font-medium text-gray-900 mb-4">Paramètres</h3>
+                     <div className="space-y-4">
+-                        <div>
+-                            <label className="block text-sm font-medium text-gray-700">Date de début</label>
+-                            <input
+-                                type="date"
+-                                value={dateRange.start_date}
+-                                onChange={(e) => setDateRange({...dateRange, start_date: e.target.value})}
+-                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+-                            />
+-                        </div>
+-                        <div>
+-                            <label className="block text-sm font-medium text-gray-700">Date de fin</label>
+-                            <input
+-                                type="date"
+-                                value={dateRange.end_date}
+-                                onChange={(e) => setDateRange({...dateRange, end_date: e.target.value})}
+-                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+-                            />
+-                        </div>
++                        {reportType === 'payroll' ? (
++                            <div>
++                                <label className="block text-sm font-medium text-gray-700">Mois</label>
++                                <input
++                                    type="month"
++                                    value={month}
++                                    onChange={(e) => setMonth(e.target.value)}
++                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
++                                />
++                            </div>
++                        ) : (
++                            <>
++                                <div>
++                                    <label className="block text-sm font-medium text-gray-700">Date de début</label>
++                                    <input
++                                        type="date"
++                                        value={dateRange.start_date}
++                                        onChange={(e) => setDateRange({ ...dateRange, start_date: e.target.value })}
++                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
++                                    />
++                                </div>
++                                <div>
++                                    <label className="block text-sm font-medium text-gray-700">Date de fin</label>
++                                    <input
++                                        type="date"
++                                        value={dateRange.end_date}
++                                        onChange={(e) => setDateRange({ ...dateRange, end_date: e.target.value })}
++                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
++                                    />
++                                </div>
++                            </>
++                        )}
+                         <div>
+                             <label className="block text-sm font-medium text-gray-700">Format</label>
+                             <div className="flex space-x-4 mt-1">
+@@ -242,11 +172,12 @@ const Reports: React.FC = () => {
+                                         onChange={() => setFormat('excel')}
+                                         className="form-radio text-primary-600"
+                                     />
+-                                    <span className="ml-2 text-sm text-gray-700">Excel (CSV)</span>
++                                    <span className="ml-2 text-sm text-gray-700">Excel (.xlsx)</span>
+                                 </label>
+                             </div>
+                         </div>
+                         <button
++                            type="button"
+                             onClick={generateReport}
+                             disabled={loading}
+                             className="w-full px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center"
+@@ -300,4 +231,4 @@ const Reports: React.FC = () => {
+     );
+ };
+ 
+-export default Reports;
+\ No newline at end of file
++export default Reports;

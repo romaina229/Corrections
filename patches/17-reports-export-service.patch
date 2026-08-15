@@ -1,0 +1,186 @@
+diff --git a/app/Services/ReportExportService.php b/app/Services/ReportExportService.php
+new file mode 100644
+index 0000000..1ab4c20
+--- /dev/null
++++ b/app/Services/ReportExportService.php
+@@ -0,0 +1,99 @@
++<?php
++
++namespace App\Services;
++
++use Barryvdh\DomPDF\Facade\Pdf;
++use PhpOffice\PhpSpreadsheet\Spreadsheet;
++use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
++use Symfony\Component\HttpFoundation\StreamedResponse;
++
++class ReportExportService
++{
++    /**
++     * Génère un rapport PDF portrait A4 générique : titre, période,
++     * bloc de résumé (paires clé/valeur) puis tableau de détail.
++     *
++     * @param  array<string, string|int|float>  $summary
++     * @param  array<int, string>  $headers
++     * @param  array<int, array<int, string>>  $rows
++     */
++    public function generatePdf(string $title, string $periodLabel, array $summary, array $headers, array $rows)
++    {
++        return Pdf::loadView('pdf.report', [
++            'title' => $title,
++            'periodLabel' => $periodLabel,
++            'summary' => $summary,
++            'headers' => $headers,
++            'rows' => $rows,
++        ])
++            ->setPaper('a4', 'landscape')
++            ->setOptions([
++                'isRemoteEnabled' => false,
++                'defaultFont' => 'DejaVu Sans',
++            ]);
++    }
++
++    /**
++     * Génère un classeur Excel (.xlsx) réel : une feuille « Résumé »
++     * (si un résumé est fourni) et une feuille « Détail » avec
++     * en-têtes figés et largeurs de colonnes auto-ajustées.
++     *
++     * @param  array<string, string|int|float>  $summary
++     * @param  array<int, string>  $headers
++     * @param  array<int, array<int, string>>  $rows
++     */
++    public function generateExcel(string $title, string $periodLabel, array $summary, array $headers, array $rows, string $filename = 'rapport.xlsx'): StreamedResponse
++    {
++        $spreadsheet = new Spreadsheet();
++
++        if (! empty($summary)) {
++            $summarySheet = $spreadsheet->getActiveSheet();
++            $summarySheet->setTitle('Résumé');
++            $summarySheet->setCellValue('A1', $title);
++            $summarySheet->setCellValue('A2', $periodLabel);
++            $summarySheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
++
++            $row = 4;
++            foreach ($summary as $label => $value) {
++                $summarySheet->setCellValue('A' . $row, $label);
++                $summarySheet->setCellValue('B' . $row, $value);
++                $row++;
++            }
++            $summarySheet->getColumnDimension('A')->setWidth(35);
++            $summarySheet->getColumnDimension('B')->setWidth(20);
++
++            $detailSheet = $spreadsheet->createSheet();
++        } else {
++            $detailSheet = $spreadsheet->getActiveSheet();
++        }
++
++        $detailSheet->setTitle('Détail');
++        foreach ($headers as $index => $header) {
++            $detailSheet->setCellValueByColumnAndRow($index + 1, 1, $header);
++        }
++        $detailSheet->getStyle(1, 1, count($headers), 1)->getFont()->setBold(true);
++        $detailSheet->freezePane('A2');
++
++        foreach ($rows as $rowIndex => $rowData) {
++            foreach ($rowData as $colIndex => $value) {
++                $detailSheet->setCellValueByColumnAndRow($colIndex + 1, $rowIndex + 2, $value);
++            }
++        }
++
++        foreach (range(1, count($headers)) as $col) {
++            $detailSheet->getColumnDimensionByColumn($col)->setAutoSize(true);
++        }
++
++        $spreadsheet->setActiveSheetIndex(0);
++
++        $writer = new Xlsx($spreadsheet);
++
++        return new StreamedResponse(function () use ($writer) {
++            $writer->save('php://output');
++        }, 200, [
++            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
++            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
++            'Cache-Control' => 'max-age=0',
++        ]);
++    }
++}
+diff --git a/composer.json b/composer.json
+index 8f1769d..b1e10a8 100644
+--- a/composer.json
++++ b/composer.json
+@@ -14,6 +14,7 @@
+         "laravel/framework": "^13.8",
+         "laravel/sanctum": "^4.3",
+         "laravel/tinker": "^3.0",
++        "phpoffice/phpspreadsheet": "^3.5",
+         "simplesoftwareio/simple-qrcode": "^4.2",
+         "spatie/laravel-permission": "^8.3"
+     },
+diff --git a/resources/views/pdf/report.blade.php b/resources/views/pdf/report.blade.php
+new file mode 100644
+index 0000000..d149f7b
+--- /dev/null
++++ b/resources/views/pdf/report.blade.php
+@@ -0,0 +1,63 @@
++<!doctype html>
++<html lang="fr">
++<head>
++    <meta charset="utf-8">
++    <title>{{ $title }}</title>
++    <style>
++        @page { margin: 12mm; }
++        * { box-sizing: border-box; }
++        body { margin: 0; font-family: DejaVu Sans, sans-serif; color: #17152b; font-size: 9px; }
++        .header { border-bottom: 2px solid #191a3d; padding-bottom: 8px; margin-bottom: 12px; }
++        .header h1 { margin: 0; font-size: 16px; color: #191a3d; }
++        .header p { margin: 3px 0 0; color: #77738e; font-size: 9px; }
++        .summary { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
++        .summary td { padding: 4px 8px; border: 1px solid #e3e0f1; font-size: 8.5px; }
++        .summary td.label { background: #f7f6fb; font-weight: 700; width: 220px; color: #5b4fe8; }
++        table.detail { width: 100%; border-collapse: collapse; }
++        table.detail th { background: #191a3d; color: white; padding: 6px; text-align: left; font-size: 8px; text-transform: uppercase; }
++        table.detail td { padding: 5px 6px; border-bottom: 1px solid #eceaf4; font-size: 8.5px; }
++        table.detail tr:nth-child(even) td { background: #f9f9fc; }
++        .footer { margin-top: 10px; color: #a6a3b8; font-size: 7px; text-align: right; }
++    </style>
++</head>
++<body>
++    <div class="header">
++        <h1>{{ $title }}</h1>
++        <p>{{ $periodLabel }} — généré le {{ now()->format('d/m/Y à H:i') }}</p>
++    </div>
++
++    @if(!empty($summary))
++        <table class="summary">
++            @foreach($summary as $label => $value)
++                <tr>
++                    <td class="label">{{ $label }}</td>
++                    <td>{{ $value }}</td>
++                </tr>
++            @endforeach
++        </table>
++    @endif
++
++    <table class="detail">
++        <thead>
++            <tr>
++                @foreach($headers as $header)
++                    <th>{{ $header }}</th>
++                @endforeach
++            </tr>
++        </thead>
++        <tbody>
++            @forelse($rows as $row)
++                <tr>
++                    @foreach($row as $cell)
++                        <td>{{ $cell }}</td>
++                    @endforeach
++                </tr>
++            @empty
++                <tr><td colspan="{{ count($headers) }}">Aucune donnée pour cette période.</td></tr>
++            @endforelse
++        </tbody>
++    </table>
++
++    <div class="footer">SDS-RH · {{ count($rows) }} ligne(s)</div>
++</body>
++</html>

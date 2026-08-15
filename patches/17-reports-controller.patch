@@ -1,0 +1,252 @@
+diff --git a/app/Http/Controllers/Api/ReportController.php b/app/Http/Controllers/Api/ReportController.php
+index 144f137..16aea16 100644
+--- a/app/Http/Controllers/Api/ReportController.php
++++ b/app/Http/Controllers/Api/ReportController.php
+@@ -7,12 +7,27 @@
+ use App\Models\Attendance;
+ use App\Models\Leave;
+ use App\Models\Payroll;
++use App\Services\ReportExportService;
+ use Illuminate\Http\Request;
+ use Carbon\Carbon;
+ 
+ class ReportController extends Controller
+ {
+-    public function employees(Request $request)
++    private const STATUS_LABELS = [
++        'active' => 'Actif', 'on_leave' => 'En congé', 'terminated' => 'Terminé', 'suspended' => 'Suspendu',
++        'present' => 'Présent', 'absent' => 'Absent', 'late' => 'Retard', 'half_day' => 'Demi-journée',
++        'holiday' => 'Férié', 'leave' => 'Congé',
++        'pending' => 'En attente', 'approved' => 'Approuvé', 'rejected' => 'Rejeté', 'cancelled' => 'Annulé',
++        'paid' => 'Payé', 'processed' => 'Traité', 'draft' => 'Brouillon',
++    ];
++
++    private const LEAVE_TYPE_LABELS = [
++        'annual' => 'Annuel', 'sick' => 'Maladie', 'maternity' => 'Maternité',
++        'paternity' => 'Paternité', 'exceptional' => 'Exceptionnel',
++        'unpaid' => 'Sans solde', 'training' => 'Formation',
++    ];
++
++    public function employees(Request $request, ReportExportService $exportService)
+     {
+         $request->validate([
+             'start_date' => 'required|date',
+@@ -27,17 +42,34 @@ public function employees(Request $request)
+             ->whereBetween('hire_date', [$request->start_date, $request->end_date])
+             ->get();
+ 
++        $periodLabel = 'Embauchés du ' . Carbon::parse($request->start_date)->format('d/m/Y')
++            . ' au ' . Carbon::parse($request->end_date)->format('d/m/Y');
++
++        if ($request->format === 'pdf' || $request->format === 'excel') {
++            $headers = ['Matricule', 'Nom', 'E-mail', 'Département', 'Poste', "Date d'embauche", 'Statut'];
++            $rows = $employees->map(fn (Employee $e) => [
++                $e->employee_number,
++                trim(($e->user->first_name ?? '') . ' ' . ($e->user->last_name ?? '')),
++                $e->user->email ?? '',
++                $e->department->name ?? '—',
++                $e->position->title ?? '—',
++                optional($e->hire_date)->format('d/m/Y'),
++                self::STATUS_LABELS[$e->status] ?? $e->status,
++            ])->toArray();
++
++            $summary = ['Nombre d\'employés' => $employees->count()];
++
++            return $this->export($exportService, $request->format, 'Rapport Employés', $periodLabel, $summary, $headers, $rows);
++        }
++
+         return response()->json([
+             'employees' => $employees,
+             'count' => $employees->count(),
+-            'period' => [
+-                'start' => $request->start_date,
+-                'end' => $request->end_date,
+-            ]
++            'period' => ['start' => $request->start_date, 'end' => $request->end_date],
+         ]);
+     }
+ 
+-    public function attendance(Request $request)
++    public function attendance(Request $request, ReportExportService $exportService)
+     {
+         $request->validate([
+             'start_date' => 'required|date',
+@@ -64,17 +96,45 @@ public function attendance(Request $request)
+             'overtime_hours' => $attendances->sum('overtime_hours'),
+         ];
+ 
++        $periodLabel = 'Du ' . Carbon::parse($request->start_date)->format('d/m/Y')
++            . ' au ' . Carbon::parse($request->end_date)->format('d/m/Y');
++
++        if ($request->format === 'pdf' || $request->format === 'excel') {
++            $headers = ['Employé', 'Département', 'Date', 'Statut', 'Entrée', 'Sortie', 'Heures', 'Heures sup.'];
++            $rows = $attendances->map(fn (Attendance $a) => [
++                trim(($a->employee->user->first_name ?? '') . ' ' . ($a->employee->user->last_name ?? '')),
++                $a->employee->department->name ?? '—',
++                optional($a->date)->format('d/m/Y'),
++                self::STATUS_LABELS[$a->status] ?? $a->status,
++                $a->clock_in ?? '—',
++                $a->clock_out ?? '—',
++                $a->total_hours ?? 0,
++                $a->overtime_hours ?? 0,
++            ])->toArray();
++
++            $formattedSummary = [
++                'Total pointages' => $summary['total'],
++                'Présents' => $summary['present'],
++                'Absents' => $summary['absent'],
++                'Retards' => $summary['late'],
++                'Demi-journées' => $summary['half_day'],
++                'Fériés' => $summary['holiday'],
++                'Congés' => $summary['leave'],
++                'Total heures' => $summary['total_hours'],
++                'Total heures sup.' => $summary['overtime_hours'],
++            ];
++
++            return $this->export($exportService, $request->format, 'Rapport Présences', $periodLabel, $formattedSummary, $headers, $rows);
++        }
++
+         return response()->json([
+             'attendances' => $attendances,
+             'summary' => $summary,
+-            'period' => [
+-                'start' => $request->start_date,
+-                'end' => $request->end_date,
+-            ]
++            'period' => ['start' => $request->start_date, 'end' => $request->end_date],
+         ]);
+     }
+ 
+-    public function payroll(Request $request)
++    public function payroll(Request $request, ReportExportService $exportService)
+     {
+         $request->validate([
+             'month' => 'required|date_format:Y-m',
+@@ -100,6 +160,37 @@ public function payroll(Request $request)
+             'processed' => $payrolls->where('status', 'processed')->count(),
+         ];
+ 
++        $periodLabel = Carbon::createFromFormat('Y-m', $request->month)->translatedFormat('F Y');
++
++        if ($request->format === 'pdf' || $request->format === 'excel') {
++            $headers = ['Employé', 'Département', 'Salaire de base', 'Primes', 'Retenues', 'Impôts', 'Cotisations', 'Net à payer', 'Statut'];
++            $rows = $payrolls->map(fn (Payroll $p) => [
++                trim(($p->employee->user->first_name ?? '') . ' ' . ($p->employee->user->last_name ?? '')),
++                $p->employee->department->name ?? '—',
++                number_format((float) $p->base_salary, 0, ',', ' '),
++                number_format((float) $p->bonuses, 0, ',', ' '),
++                number_format((float) $p->deductions, 0, ',', ' '),
++                number_format((float) $p->taxes, 0, ',', ' '),
++                number_format((float) $p->social_security, 0, ',', ' '),
++                number_format((float) $p->net_salary, 0, ',', ' '),
++                self::STATUS_LABELS[$p->status] ?? $p->status,
++            ])->toArray();
++
++            $formattedSummary = [
++                'Nombre de bulletins' => $summary['total_employees'],
++                'Total salaires de base' => number_format((float) $summary['total_gross'], 0, ',', ' ') . ' FCFA',
++                'Total primes' => number_format((float) $summary['total_bonuses'], 0, ',', ' ') . ' FCFA',
++                'Total retenues' => number_format((float) $summary['total_deductions'], 0, ',', ' ') . ' FCFA',
++                'Total impôts' => number_format((float) $summary['total_taxes'], 0, ',', ' ') . ' FCFA',
++                'Total cotisations sociales' => number_format((float) $summary['total_social_security'], 0, ',', ' ') . ' FCFA',
++                'Total net à payer' => number_format((float) $summary['total_net'], 0, ',', ' ') . ' FCFA',
++                'Bulletins payés' => $summary['paid'],
++                'Bulletins traités' => $summary['processed'],
++            ];
++
++            return $this->export($exportService, $request->format, 'Rapport Paie', $periodLabel, $formattedSummary, $headers, $rows);
++        }
++
+         return response()->json([
+             'payrolls' => $payrolls,
+             'summary' => $summary,
+@@ -107,7 +198,7 @@ public function payroll(Request $request)
+         ]);
+     }
+ 
+-    public function leaves(Request $request)
++    public function leaves(Request $request, ReportExportService $exportService)
+     {
+         $request->validate([
+             'start_date' => 'required|date',
+@@ -122,6 +213,11 @@ public function leaves(Request $request)
+             ->whereBetween('start_date', [$request->start_date, $request->end_date])
+             ->get();
+ 
++        $byType = $leaves->groupBy('type')->map(fn ($item) => [
++            'count' => $item->count(),
++            'days' => $item->sum('days'),
++        ]);
++
+         $summary = [
+             'total' => $leaves->count(),
+             'pending' => $leaves->where('status', 'pending')->count(),
+@@ -129,22 +225,56 @@ public function leaves(Request $request)
+             'rejected' => $leaves->where('status', 'rejected')->count(),
+             'cancelled' => $leaves->where('status', 'cancelled')->count(),
+             'total_days' => $leaves->sum('days'),
+-            'by_type' => $leaves->groupBy('type')->map(function($item) {
+-                return [
+-                    'count' => $item->count(),
+-                    'days' => $item->sum('days'),
+-                ];
+-            }),
++            'by_type' => $byType,
+         ];
+ 
++        $periodLabel = 'Du ' . Carbon::parse($request->start_date)->format('d/m/Y')
++            . ' au ' . Carbon::parse($request->end_date)->format('d/m/Y');
++
++        if ($request->format === 'pdf' || $request->format === 'excel') {
++            $headers = ['Employé', 'Département', 'Type', 'Début', 'Fin', 'Jours', 'Statut', 'Approuvé par'];
++            $rows = $leaves->map(fn (Leave $l) => [
++                trim(($l->employee->user->first_name ?? '') . ' ' . ($l->employee->user->last_name ?? '')),
++                $l->employee->department->name ?? '—',
++                self::LEAVE_TYPE_LABELS[$l->type] ?? $l->type,
++                optional($l->start_date)->format('d/m/Y'),
++                optional($l->end_date)->format('d/m/Y'),
++                $l->days,
++                self::STATUS_LABELS[$l->status] ?? $l->status,
++                $l->approver ? trim($l->approver->first_name . ' ' . $l->approver->last_name) : '—',
++            ])->toArray();
++
++            $formattedSummary = [
++                'Total demandes' => $summary['total'],
++                'En attente' => $summary['pending'],
++                'Approuvées' => $summary['approved'],
++                'Rejetées' => $summary['rejected'],
++                'Annulées' => $summary['cancelled'],
++                'Total jours' => $summary['total_days'],
++            ];
++            foreach ($byType as $type => $data) {
++                $formattedSummary['Dont ' . (self::LEAVE_TYPE_LABELS[$type] ?? $type)] = $data['count'] . ' demande(s), ' . $data['days'] . ' jour(s)';
++            }
++
++            return $this->export($exportService, $request->format, 'Rapport Congés', $periodLabel, $formattedSummary, $headers, $rows);
++        }
++
+         return response()->json([
+             'leaves' => $leaves,
+             'summary' => $summary,
+-            'period' => [
+-                'start' => $request->start_date,
+-                'end' => $request->end_date,
+-            ]
++            'period' => ['start' => $request->start_date, 'end' => $request->end_date],
+         ]);
+     }
+ 
+-}
+\ No newline at end of file
++    private function export(ReportExportService $exportService, string $format, string $title, string $periodLabel, array $summary, array $headers, array $rows)
++    {
++        $filename = str($title)->slug('-') . '-' . now()->format('Y-m-d');
++
++        if ($format === 'excel') {
++            return $exportService->generateExcel($title, $periodLabel, $summary, $headers, $rows, $filename . '.xlsx');
++        }
++
++        return $exportService->generatePdf($title, $periodLabel, $summary, $headers, $rows)
++            ->download($filename . '.pdf');
++    }
++}

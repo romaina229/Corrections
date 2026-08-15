@@ -203,8 +203,35 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend`.
+
+## Module Rapports / Exports (17) — état au dépôt du 2026-08-15
+
+Anomalie confirmée : les 4 rapports (Employés, Présences, Paie,
+Congés) acceptaient un paramètre `format=pdf|excel` mais le
+renvoyaient toujours en JSON brut, quel que soit le format demandé.
+Côté frontend, un contournement fragile compensait (fenêtre
+`window.print()` limitée à 4 colonnes pour le « PDF », CSV maison
+sans le résumé pour l'« Excel »).
+
+**Bug additionnel découvert et corrigé au passage** : le rapport Paie
+envoyait `start_date`/`end_date` alors que le backend exige
+`month` (`required|date_format:Y-m`) — toute tentative de génération
+du rapport Paie échouait donc systématiquement avec une erreur 422,
+invisible dans l'aperçu JSON puisque jamais testée jusqu'ici.
+
+| Patch | Contenu |
+|---|---|
+| `17-reports-export-service.patch` | Nouveau `ReportExportService` : PDF réel (dompdf, paysage A4, résumé + tableau détaillé) et Excel réel (`phpoffice/phpspreadsheet`, feuille Résumé + feuille Détail avec en-têtes figés). `composer.json` mis à jour. Vue `resources/views/pdf/report.blade.php` générique et réutilisable pour les 4 rapports. |
+| `17-reports-controller.patch` | `ReportController` : les 4 méthodes construisent désormais un résumé et un tableau détaillé formatés (libellés français, montants FCFA) et déclenchent un vrai téléchargement quand `format=pdf` ou `format=excel` ; comportement JSON par défaut conservé (rétrocompatibilité) si aucun format n'est fourni. |
+| `17-reports-frontend.patch` | `Reports.tsx` : téléchargement direct en `Blob` du vrai fichier généré côté serveur (fini `window.print()` et le CSV maison). Le rapport Paie utilise désormais un sélecteur de mois au lieu d'une plage de dates, corrigeant le bug de paramètre ci-dessus. |
+
+### Validation
+
+- **18/18 patchs backend** (01 → 17) appliqués en cumulé réel.
+- **25/25 patchs frontend** (02 → 17) appliqués en cumulé réel.
+- **`tsc -b --force` : 0 erreur. `oxlint` : 0 erreur.**
 
 ⚠️ `16-admin-migrations.patch` doit être appliqué avant `16-admin-user-controller.patch`/`16-admin-role-controller.patch` (colonnes `tenant_id`, `invited_at`, `last_login_at` requises). Après application, exécuter `php artisan migrate` avant tout test.
 
