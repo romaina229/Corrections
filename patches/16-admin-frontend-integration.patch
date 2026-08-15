@@ -1,0 +1,53 @@
+diff --git a/src/components/common/Sidebar.tsx b/src/components/common/Sidebar.tsx
+index 20b282b..0eed9b5 100644
+--- a/src/components/common/Sidebar.tsx
++++ b/src/components/common/Sidebar.tsx
+@@ -20,6 +20,7 @@ import {
+     DocumentCurrencyYenIcon,
+     IdentificationIcon,
+     ArrowRightOnRectangleIcon,
++    ShieldCheckIcon,
+     ChevronLeftIcon,
+     ChevronRightIcon,
+ } from '@heroicons/react/24/outline';
+@@ -189,6 +190,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle }) => {
+         {
+             label: 'Système',
+             items: [
++                {
++                    name: 'Utilisateurs',
++                    href: '/users',
++                    icon: UsersIcon,
++                    permission: 'view_users',
++                },
++                {
++                    name: 'Rôles & permissions',
++                    href: '/roles',
++                    icon: ShieldCheckIcon,
++                    permission: 'view_roles',
++                },
+                 {
+                     name: 'Notifications',
+                     href: '/notifications',
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index 96cb3af..975eb9b 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -43,6 +43,8 @@ import Recruitments from '../pages/recruitments/Recruitments';
+ import Trainings from '../pages/trainings/Trainings';
+ import Reports from '../pages/reports/Reports';
+ import Settings from '../pages/settings/Settings';
++import Users from '../pages/admin/Users';
++import Roles from '../pages/admin/Roles';
+ import Profile from '../pages/settings/Profile';
+ import Organigram from '../pages/organigram/Organigram';
+ import Performance from '../pages/performance/Performance';
+@@ -133,6 +135,8 @@ const AppRoutes = () => {
+ 
+                             {/* Paramètres */}
+                             <Route path="/settings" element={<Settings />} />
++                            <Route path="/users" element={<Users />} />
++                            <Route path="/roles" element={<Roles />} />
+                             <Route path="/profile" element={<Profile />} />
+ 
+                             {/* Redirection par défaut */}

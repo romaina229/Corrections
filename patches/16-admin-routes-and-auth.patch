@@ -1,0 +1,63 @@
+diff --git a/app/Http/Controllers/Api/AuthController.php b/app/Http/Controllers/Api/AuthController.php
+index ce61816..acc9940 100644
+--- a/app/Http/Controllers/Api/AuthController.php
++++ b/app/Http/Controllers/Api/AuthController.php
+@@ -220,6 +220,8 @@ public function login(Request $request)
+             return response()->json(['message' => 'Votre compte est désactivé'], 403);
+         }
+ 
++        $user->forceFill(['last_login_at' => now()])->save();
++
+         $tenant = $user->tenant;
+ 
+         /*
+diff --git a/database/seeders/RolePermissionSeeder.php b/database/seeders/RolePermissionSeeder.php
+index 8e6675f..25926ac 100644
+--- a/database/seeders/RolePermissionSeeder.php
++++ b/database/seeders/RolePermissionSeeder.php
+@@ -25,6 +25,8 @@ public function run(): void
+             'view_recruitments', 'create_recruitments', 'edit_recruitments', 'delete_recruitments',
+             'view_performances', 'create_performances', 'edit_performances', 'delete_performances',
+             'view_reports', 'view_settings',
++            'view_users', 'create_users', 'edit_users', 'delete_users',
++            'view_roles', 'create_roles', 'edit_roles', 'delete_roles',
+         ];
+ 
+         foreach ($permissions as $permission) {
+diff --git a/routes/api.php b/routes/api.php
+index 9733706..6082136 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -21,6 +21,8 @@
+ use App\Http\Controllers\Api\ReportController;
+ use App\Http\Controllers\Api\SettingsController;
+ use App\Http\Controllers\Api\TrainingController;
++use App\Http\Controllers\Api\UserController;
++use App\Http\Controllers\Api\RoleController;
+ use Illuminate\Support\Facades\Route;
+ 
+ 
+@@ -224,6 +226,23 @@
+             Route::post('/settings/logo', [SettingsController::class, 'updateLogo']);
+         });
+         Route::put('/profile', [SettingsController::class, 'updateProfile']);
++
++        Route::middleware('permission:view_users')->group(function () {
++            Route::get('/users', [UserController::class, 'index']);
++        });
++        Route::post('/users', [UserController::class, 'store'])->middleware('permission:create_users');
++        Route::post('/users/invite', [UserController::class, 'invite'])->middleware('permission:create_users');
++        Route::post('/users/{user}/resend-invitation', [UserController::class, 'resendInvitation'])->middleware('permission:create_users');
++        Route::put('/users/{user}', [UserController::class, 'update'])->middleware('permission:edit_users');
++        Route::delete('/users/{user}', [UserController::class, 'destroy'])->middleware('permission:delete_users');
++
++        Route::middleware('permission:view_roles')->group(function () {
++            Route::get('/roles', [RoleController::class, 'index']);
++            Route::get('/permissions', [RoleController::class, 'permissions']);
++        });
++        Route::post('/roles', [RoleController::class, 'store'])->middleware('permission:create_roles');
++        Route::put('/roles/{role}', [RoleController::class, 'update'])->middleware('permission:edit_roles');
++        Route::delete('/roles/{role}', [RoleController::class, 'destroy'])->middleware('permission:delete_roles');
+     });
+ 
+     Route::prefix('admin')->middleware('role:super_admin')->group(function () {

@@ -1,0 +1,159 @@
+diff --git a/app/Http/Controllers/Api/RoleController.php b/app/Http/Controllers/Api/RoleController.php
+new file mode 100644
+index 0000000..cd6c0e0
+--- /dev/null
++++ b/app/Http/Controllers/Api/RoleController.php
+@@ -0,0 +1,153 @@
++<?php
++
++namespace App\Http\Controllers\Api;
++
++use App\Http\Controllers\Controller;
++use Illuminate\Http\Request;
++use Illuminate\Validation\Rule;
++use Spatie\Permission\Models\Permission;
++use Spatie\Permission\Models\Role;
++
++class RoleController extends Controller
++{
++    /**
++     * Rôles visibles pour le tenant courant : les rôles système
++     * (tenant_id null, partagés par toute la plateforme) en lecture
++     * seule, plus les rôles personnalisés créés par ce tenant.
++     */
++    public function index()
++    {
++        $roles = Role::query()
++            ->where(function ($query) {
++                $query->whereNull('tenant_id')
++                    ->orWhere('tenant_id', app('tenant')->id);
++            })
++            ->withCount('users')
++            ->with('permissions:id,name')
++            ->orderByRaw('tenant_id IS NULL DESC')
++            ->orderBy('name')
++            ->get()
++            ->map(fn (Role $role) => $this->transform($role));
++
++        return response()->json(['data' => $roles]);
++    }
++
++    public function store(Request $request)
++    {
++        $data = $request->validate([
++            'name' => [
++                'required',
++                'string',
++                'max:100',
++                Rule::unique('roles', 'name')->where(
++                    fn ($q) => $q->where('tenant_id', app('tenant')->id)
++                ),
++            ],
++            'permissions' => ['required', 'array', 'min:1'],
++            'permissions.*' => ['string', Rule::exists('permissions', 'name')],
++        ]);
++
++        $role = Role::create([
++            'name' => $data['name'],
++            'guard_name' => 'web',
++            'tenant_id' => app('tenant')->id,
++        ]);
++
++        $role->syncPermissions($data['permissions']);
++
++        return response()->json([
++            'message' => 'Rôle créé avec succès',
++            'role' => $this->transform($role->fresh(['permissions'])),
++        ], 201);
++    }
++
++    public function update(Request $request, Role $role)
++    {
++        $this->assertCustomRole($role);
++
++        $data = $request->validate([
++            'name' => [
++                'sometimes',
++                'string',
++                'max:100',
++                Rule::unique('roles', 'name')->where(
++                    fn ($q) => $q->where('tenant_id', app('tenant')->id)
++                )->ignore($role->id),
++            ],
++            'permissions' => ['sometimes', 'array', 'min:1'],
++            'permissions.*' => ['string', Rule::exists('permissions', 'name')],
++        ]);
++
++        if (isset($data['name'])) {
++            $role->update(['name' => $data['name']]);
++        }
++
++        if (isset($data['permissions'])) {
++            $role->syncPermissions($data['permissions']);
++        }
++
++        return response()->json([
++            'message' => 'Rôle mis à jour avec succès',
++            'role' => $this->transform($role->fresh(['permissions'])),
++        ]);
++    }
++
++    public function destroy(Role $role)
++    {
++        $this->assertCustomRole($role);
++
++        if ($role->users()->count() > 0) {
++            return response()->json([
++                'message' => 'Ce rôle est encore attribué à des utilisateurs, retirez-le d\'abord.',
++            ], 422);
++        }
++
++        $role->delete();
++
++        return response()->json(['message' => 'Rôle supprimé avec succès']);
++    }
++
++    /**
++     * Catalogue complet des permissions disponibles, groupées par
++     * domaine (préfixe avant le premier underscore) pour construire un
++     * éditeur de permissions lisible côté frontend.
++     */
++    public function permissions()
++    {
++        $grouped = Permission::orderBy('name')->get()->groupBy(function (Permission $permission) {
++            return explode('_', $permission->name, 2)[1] ?? $permission->name;
++        });
++
++        return response()->json([
++            'data' => $grouped->map(fn ($items, $group) => [
++                'group' => $group,
++                'permissions' => $items->pluck('name')->values(),
++            ])->values(),
++        ]);
++    }
++
++    private function assertCustomRole(Role $role): void
++    {
++        abort_if(
++            $role->tenant_id === null,
++            403,
++            'Ce rôle système est protégé et ne peut pas être modifié.'
++        );
++
++        abort_unless(
++            (int) $role->tenant_id === (int) app('tenant')->id,
++            404
++        );
++    }
++
++    private function transform(Role $role): array
++    {
++        return [
++            'id' => $role->id,
++            'name' => $role->name,
++            'is_system' => $role->tenant_id === null,
++            'users_count' => $role->users_count ?? 0,
++            'permissions' => $role->permissions->pluck('name')->values(),
++        ];
++    }
++}

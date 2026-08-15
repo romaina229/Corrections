@@ -1,0 +1,87 @@
+diff --git a/src/api/administration.ts b/src/api/administration.ts
+new file mode 100644
+index 0000000..eb961ed
+--- /dev/null
++++ b/src/api/administration.ts
+@@ -0,0 +1,43 @@
++import axios from './axios';
++
++interface ListParams {
++    [key: string]: any;
++}
++
++interface CreateUserData {
++    first_name: string;
++    last_name: string;
++    email: string;
++    phone?: string;
++    role: string;
++    password?: string;
++    password_confirmation?: string;
++}
++
++interface UpdateUserData {
++    first_name?: string;
++    last_name?: string;
++    phone?: string;
++    status?: 'active' | 'inactive';
++    role?: string;
++}
++
++export const administration = {
++    users: {
++        list: (params?: ListParams) => axios.get('/users', { params }),
++        create: (data: CreateUserData) => axios.post('/users', data),
++        invite: (data: Omit<CreateUserData, 'password' | 'password_confirmation'>) =>
++            axios.post('/users/invite', data),
++        update: (id: number, data: UpdateUserData) => axios.put(`/users/${id}`, data),
++        delete: (id: number) => axios.delete(`/users/${id}`),
++        resendInvitation: (id: number) => axios.post(`/users/${id}/resend-invitation`),
++    },
++    roles: {
++        list: () => axios.get('/roles'),
++        create: (data: { name: string; permissions: string[] }) => axios.post('/roles', data),
++        update: (id: number, data: { name?: string; permissions?: string[] }) =>
++            axios.put(`/roles/${id}`, data),
++        delete: (id: number) => axios.delete(`/roles/${id}`),
++        permissions: () => axios.get('/permissions'),
++    },
++};
+diff --git a/src/types/index.ts b/src/types/index.ts
+index d413faf..163597f 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -42,6 +42,33 @@ export interface BankDetails {
+   account_number?: string;
+ }
+ 
++export interface Role {
++  id: number;
++  name: string;
++  is_system: boolean;
++  users_count: number;
++  permissions: string[];
++}
++
++export interface PermissionGroup {
++  group: string;
++  permissions: string[];
++}
++
++export interface AdminUser {
++  id: number;
++  tenant_id: number;
++  first_name: string;
++  last_name: string;
++  email: string;
++  phone?: string;
++  status: 'active' | 'inactive';
++  invited_at?: string;
++  last_login_at?: string;
++  created_at: string;
++  roles: { id: number; name: string }[];
++}
++
+ export interface Employee {
+   id: number;
+   tenant_id: number;

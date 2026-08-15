@@ -46,9 +46,14 @@ git apply /chemin/vers/Corrections/patches/12-overtime-backend.patch
 git apply /chemin/vers/Corrections/patches/13-leaves-backend.patch
 git apply /chemin/vers/Corrections/patches/15-employees-backend-tenant.patch
 git apply /chemin/vers/Corrections/patches/15-dashboard-employee-payroll.patch
+git apply /chemin/vers/Corrections/patches/16-admin-migrations.patch
+git apply /chemin/vers/Corrections/patches/16-admin-user-controller.patch
+git apply /chemin/vers/Corrections/patches/16-admin-role-controller.patch
+git apply /chemin/vers/Corrections/patches/16-admin-routes-and-auth.patch
 
 composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2
 php artisan migrate
+php artisan db:seed --class=RolePermissionSeeder
 php -l app/Http/Controllers/Api/*.php   # sanity check syntaxe
 php artisan route:list --path=leaves
 php artisan route:list --path=contracts
@@ -81,6 +86,10 @@ git apply /chemin/vers/Corrections/patches/15-employees-frontend-query-filter.pa
 git apply /chemin/vers/Corrections/patches/15-employee-show-frontend-query.patch
 git apply /chemin/vers/Corrections/patches/15-dashboard-frontend-query.patch
 git apply /chemin/vers/Corrections/patches/15-spa-navigation-guard.patch
+git apply /chemin/vers/Corrections/patches/16-admin-frontend-api.patch
+git apply /chemin/vers/Corrections/patches/16-admin-frontend-users-page.patch
+git apply /chemin/vers/Corrections/patches/16-admin-frontend-roles-page.patch
+git apply /chemin/vers/Corrections/patches/16-admin-frontend-integration.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -139,6 +148,20 @@ compte des patchs précédents dans cette séquence exacte.
 - [ ] Un utilisateur du tenant B reçoit 404 sur `GET /employees/{id}` et `PUT /employees/{id}` d'un employé du tenant A (déjà testé en module 06/07/08, à revérifier ici puisque `show`/`update` avaient un contrôle tenant manquant jusqu'à ce module)
 - [ ] Créer un employé avec un `department_id` appartenant à un autre tenant (via l'API directement) → doit être refusé en validation
 - [ ] Cliquer un lien `<a href="/...">` interne resté non migré (s'il en existe encore) → doit naviguer en SPA, sans rechargement complet de page (vérifier dans les DevTools réseau : pas de requête de document HTML)
+
+**Module 16 — Administration Utilisateurs / Rôles / Permissions**
+- [ ] `php artisan migrate` exécuté avant tout test (colonnes `roles.tenant_id`, `users.invited_at`, `users.last_login_at` requises)
+- [ ] `php artisan db:seed --class=RolePermissionSeeder` exécuté pour activer les 8 nouvelles permissions sur les rôles admin_org/super_admin
+- [ ] Créer un utilisateur en mode « Créer directement » → connexion immédiate possible avec le mot de passe saisi
+- [ ] Créer un utilisateur en mode « Inviter par e-mail » → vérifier dans `storage/logs/laravel.log` (si `MAIL_MAILER=log`) qu'un e-mail de définition de mot de passe a bien été généré
+- [ ] Renvoyer une invitation à un utilisateur non encore activé
+- [ ] Changer le rôle d'un utilisateur en ligne depuis la liste
+- [ ] Désactiver un utilisateur, vérifier qu'il ne peut plus se connecter (`403` avec message clair)
+- [ ] Tenter de se désactiver soi-même → doit être refusé
+- [ ] Tenter de retirer le rôle `admin_org` au dernier administrateur actif du tenant → doit être refusé
+- [ ] Créer un rôle personnalisé avec quelques permissions, l'attribuer à un utilisateur, vérifier que l'accès aux menus correspond exactement aux permissions choisies
+- [ ] Tenter de modifier ou supprimer un rôle système (`admin_org`, `manager`...) → doit être refusé (403)
+- [ ] Créer un rôle personnalisé avec le même nom depuis deux tenants différents → doit fonctionner sans conflit (test d'isolation le plus important de ce module)
 
 ## En cas d'échec d'un `git apply`
 

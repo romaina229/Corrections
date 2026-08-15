@@ -1,0 +1,235 @@
+diff --git a/app/Http/Controllers/Api/UserController.php b/app/Http/Controllers/Api/UserController.php
+new file mode 100644
+index 0000000..9489b30
+--- /dev/null
++++ b/app/Http/Controllers/Api/UserController.php
+@@ -0,0 +1,229 @@
++<?php
++
++namespace App\Http\Controllers\Api;
++
++use App\Http\Controllers\Controller;
++use App\Models\User;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\Hash;
++use Illuminate\Support\Facades\Password;
++use Illuminate\Support\Str;
++use Illuminate\Validation\Rule;
++use Spatie\Permission\Models\Role;
++
++class UserController extends Controller
++{
++    public function index(Request $request)
++    {
++        $query = User::where('tenant_id', app('tenant')->id)
++            ->with('roles:id,name')
++            ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'super_admin'));
++
++        if ($request->filled('search')) {
++            $search = $request->string('search');
++            $query->where(function ($q) use ($search) {
++                $q->where('first_name', 'like', "%{$search}%")
++                    ->orWhere('last_name', 'like', "%{$search}%")
++                    ->orWhere('email', 'like', "%{$search}%");
++            });
++        }
++
++        if ($request->filled('role')) {
++            $query->whereHas('roles', fn ($q) => $q->where('name', $request->string('role')));
++        }
++
++        if ($request->filled('status')) {
++            $query->where('status', $request->string('status'));
++        }
++
++        $users = $query->orderBy('first_name')
++            ->paginate(min((int) $request->input('per_page', 15), 100));
++
++        return response()->json($users);
++    }
++
++    /**
++     * Création directe : l'administrateur définit lui-même le mot de
++     * passe initial, le compte est utilisable immédiatement.
++     */
++    public function store(Request $request)
++    {
++        $data = $this->validateUserData($request, requirePassword: true);
++
++        $user = User::create([
++            'first_name' => $data['first_name'],
++            'last_name' => $data['last_name'],
++            'email' => $data['email'],
++            'phone' => $data['phone'] ?? null,
++            'password' => Hash::make($data['password']),
++            'status' => 'active',
++        ]);
++
++        $user->assignRole($data['role']);
++
++        return response()->json([
++            'message' => 'Utilisateur créé avec succès',
++            'user' => $user->load('roles:id,name'),
++        ], 201);
++    }
++
++    /**
++     * Invitation : aucun mot de passe n'est demandé à l'administrateur.
++     * Le compte est créé avec un mot de passe aléatoire inconnu de
++     * tous, puis un e-mail de définition de mot de passe est envoyé en
++     * réutilisant le mécanisme standard « mot de passe oublié » de
++     * Laravel — aucune nouvelle table ni notification à maintenir.
++     */
++    public function invite(Request $request)
++    {
++        $data = $this->validateUserData($request, requirePassword: false);
++
++        $user = User::create([
++            'first_name' => $data['first_name'],
++            'last_name' => $data['last_name'],
++            'email' => $data['email'],
++            'phone' => $data['phone'] ?? null,
++            'password' => Hash::make(Str::random(40)),
++            'status' => 'active',
++            'invited_at' => now(),
++        ]);
++
++        $user->assignRole($data['role']);
++
++        Password::sendResetLink(['email' => $user->email]);
++
++        return response()->json([
++            'message' => 'Invitation envoyée avec succès',
++            'user' => $user->load('roles:id,name'),
++        ], 201);
++    }
++
++    public function update(Request $request, User $user)
++    {
++        abort_unless(
++            (int) $user->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        $data = $request->validate([
++            'first_name' => 'sometimes|string|max:255',
++            'last_name' => 'sometimes|string|max:255',
++            'phone' => 'nullable|string|max:20',
++            'status' => 'sometimes|in:active,inactive',
++            'role' => [
++                'sometimes',
++                Rule::exists('roles', 'name')->where(function ($q) {
++                    $q->whereNull('tenant_id')->orWhere('tenant_id', app('tenant')->id);
++                }),
++            ],
++        ]);
++
++        if (
++            isset($data['status']) && $data['status'] === 'inactive'
++            && (int) $user->id === (int) $request->user()->id
++        ) {
++            return response()->json([
++                'message' => 'Vous ne pouvez pas désactiver votre propre compte.',
++            ], 422);
++        }
++
++        $user->update(collect($data)->except('role')->toArray());
++
++        if (isset($data['role'])) {
++            $this->assertNotLastAdmin($user, $data['role']);
++            $user->syncRoles([$data['role']]);
++        }
++
++        return response()->json([
++            'message' => 'Utilisateur mis à jour avec succès',
++            'user' => $user->fresh()->load('roles:id,name'),
++        ]);
++    }
++
++    /**
++     * Désactivation logique — jamais de suppression physique d'un
++     * compte utilisateur (historique, contrats, bulletins, etc. y
++     * font référence).
++     */
++    public function destroy(Request $request, User $user)
++    {
++        abort_unless(
++            (int) $user->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        if ((int) $user->id === (int) $request->user()->id) {
++            return response()->json([
++                'message' => 'Vous ne pouvez pas désactiver votre propre compte.',
++            ], 422);
++        }
++
++        $this->assertNotLastAdmin($user, null);
++
++        $user->update(['status' => 'inactive']);
++
++        return response()->json(['message' => 'Utilisateur désactivé avec succès']);
++    }
++
++    public function resendInvitation(Request $request, User $user)
++    {
++        abort_unless(
++            (int) $user->tenant_id === (int) app('tenant')->id,
++            404
++        );
++
++        Password::sendResetLink(['email' => $user->email]);
++
++        return response()->json(['message' => 'Invitation renvoyée avec succès']);
++    }
++
++    private function validateUserData(Request $request, bool $requirePassword): array
++    {
++        $rules = [
++            'first_name' => 'required|string|max:255',
++            'last_name' => 'required|string|max:255',
++            'email' => 'required|email|max:255|unique:users,email',
++            'phone' => 'nullable|string|max:20',
++            'role' => [
++                'required',
++                Rule::exists('roles', 'name')->where(function ($q) {
++                    $q->whereNull('tenant_id')->orWhere('tenant_id', app('tenant')->id);
++                }),
++            ],
++        ];
++
++        if ($requirePassword) {
++            $rules['password'] = 'required|string|min:8|confirmed';
++        }
++
++        return $request->validate($rules);
++    }
++
++    /**
++     * Empêche de retirer le rôle admin_org du dernier administrateur
++     * actif du tenant — condition nécessaire pour ne jamais bloquer
++     * l'accès à l'administration de l'organisation.
++     */
++    private function assertNotLastAdmin(User $user, ?string $newRole): void
++    {
++        if (! $user->hasRole('admin_org')) {
++            return;
++        }
++
++        if ($newRole === 'admin_org') {
++            return;
++        }
++
++        $remainingAdmins = User::where('tenant_id', app('tenant')->id)
++            ->where('status', 'active')
++            ->where('id', '!=', $user->id)
++            ->role('admin_org')
++            ->count();
++
++        abort_if(
++            $remainingAdmins === 0,
++            422,
++            'Impossible : cet utilisateur est le dernier administrateur actif de l\'organisation.'
++        );
++    }
++}

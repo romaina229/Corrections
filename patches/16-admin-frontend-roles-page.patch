@@ -1,0 +1,265 @@
+diff --git a/src/pages/admin/Roles.tsx b/src/pages/admin/Roles.tsx
+new file mode 100644
+index 0000000..a3e563c
+--- /dev/null
++++ b/src/pages/admin/Roles.tsx
+@@ -0,0 +1,259 @@
++import React, { useState } from 'react';
++import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
++import Card from '../../components/common/Card';
++import Loading from '../../components/common/Loading';
++import { useAuth } from '../../context/AuthContext';
++import { administration } from '../../api/administration';
++import type { Role, PermissionGroup } from '../../types';
++import toast from 'react-hot-toast';
++import { PlusIcon, TrashIcon, ShieldCheckIcon, LockClosedIcon } from '@heroicons/react/24/outline';
++
++const Roles: React.FC = () => {
++    const { hasPermission } = useAuth();
++    const queryClient = useQueryClient();
++    const [showForm, setShowForm] = useState(false);
++    const [editingRole, setEditingRole] = useState<Role | null>(null);
++    const [name, setName] = useState('');
++    const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
++    const [saving, setSaving] = useState(false);
++
++    const rolesQuery = useQuery({
++        queryKey: ['admin-roles'],
++        queryFn: async () => (await administration.roles.list()).data.data as Role[],
++    });
++
++    const permissionsQuery = useQuery({
++        queryKey: ['admin-permissions'],
++        queryFn: async () => (await administration.roles.permissions()).data.data as PermissionGroup[],
++        staleTime: 5 * 60 * 1000,
++    });
++
++    const invalidateRoles = (): Promise<void> =>
++        queryClient.invalidateQueries({ queryKey: ['admin-roles'] });
++
++    const deleteMutation = useMutation({
++        mutationFn: (id: number) => administration.roles.delete(id),
++        onSuccess: async () => {
++            toast.success('Rôle supprimé avec succès');
++            await invalidateRoles();
++        },
++        onError: (error: any) => toast.error(error.response?.data?.message || 'Erreur lors de la suppression'),
++    });
++
++    const resetForm = (): void => {
++        setName('');
++        setSelectedPermissions([]);
++        setEditingRole(null);
++        setShowForm(false);
++    };
++
++    const editRole = (role: Role): void => {
++        setEditingRole(role);
++        setName(role.name);
++        setSelectedPermissions(role.permissions);
++        setShowForm(true);
++    };
++
++    const togglePermission = (permission: string): void => {
++        setSelectedPermissions((prev) =>
++            prev.includes(permission) ? prev.filter((p) => p !== permission) : [...prev, permission]
++        );
++    };
++
++    const toggleGroup = (groupPermissions: string[]): void => {
++        const allSelected = groupPermissions.every((p) => selectedPermissions.includes(p));
++        setSelectedPermissions((prev) =>
++            allSelected
++                ? prev.filter((p) => !groupPermissions.includes(p))
++                : Array.from(new Set([...prev, ...groupPermissions]))
++        );
++    };
++
++    const handleSubmit = async (e: React.FormEvent): Promise<void> => {
++        e.preventDefault();
++        if (!name || selectedPermissions.length === 0) {
++            toast.error('Un nom et au moins une permission sont requis');
++            return;
++        }
++
++        setSaving(true);
++        try {
++            if (editingRole) {
++                await administration.roles.update(editingRole.id, { name, permissions: selectedPermissions });
++                toast.success('Rôle mis à jour avec succès');
++            } else {
++                await administration.roles.create({ name, permissions: selectedPermissions });
++                toast.success('Rôle créé avec succès');
++            }
++            resetForm();
++            await invalidateRoles();
++        } catch (error: any) {
++            toast.error(error.response?.data?.message || "Erreur lors de l'enregistrement");
++        } finally {
++            setSaving(false);
++        }
++    };
++
++    if (rolesQuery.isPending || permissionsQuery.isPending) {
++        return <Loading fullScreen />;
++    }
++
++    const roles = rolesQuery.data ?? [];
++    const permissionGroups = permissionsQuery.data ?? [];
++
++    return (
++        <div className="space-y-6">
++            <div className="flex items-center justify-between">
++                <div>
++                    <h1 className="text-2xl font-bold text-gray-900">Rôles & permissions</h1>
++                    <p className="text-gray-500 mt-1">
++                        Les rôles système sont partagés par toute la plateforme et non modifiables.
++                        Créez des rôles personnalisés pour votre organisation.
++                    </p>
++                </div>
++                {hasPermission('create_roles') && (
++                    <button
++                        type="button"
++                        onClick={() => { resetForm(); setShowForm(true); }}
++                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
++                    >
++                        <PlusIcon className="h-5 w-5 mr-2" />
++                        Nouveau rôle
++                    </button>
++                )}
++            </div>
++
++            {showForm && (
++                <Card>
++                    <form onSubmit={handleSubmit} className="space-y-4">
++                        <h3 className="text-lg font-medium text-gray-900">
++                            {editingRole ? 'Modifier le rôle' : 'Nouveau rôle personnalisé'}
++                        </h3>
++                        <div>
++                            <label className="block text-sm font-medium text-gray-700">Nom du rôle *</label>
++                            <input
++                                value={name}
++                                onChange={(e) => setName(e.target.value)}
++                                placeholder="Ex: Responsable Paie"
++                                className="field"
++                                required
++                            />
++                        </div>
++
++                        <div>
++                            <label className="block text-sm font-medium text-gray-700 mb-2">Permissions *</label>
++                            <div className="space-y-3 max-h-96 overflow-y-auto border rounded-md p-3">
++                                {permissionGroups.map((group) => {
++                                    const allSelected = group.permissions.every((p) => selectedPermissions.includes(p));
++                                    return (
++                                        <div key={group.group} className="border-b last:border-0 pb-2">
++                                            <label className="flex items-center gap-2 font-medium text-sm text-gray-800 mb-1">
++                                                <input
++                                                    type="checkbox"
++                                                    checked={allSelected}
++                                                    onChange={() => toggleGroup(group.permissions)}
++                                                    className="h-4 w-4 rounded border-gray-300 text-primary-600"
++                                                />
++                                                {group.group}
++                                            </label>
++                                            <div className="flex flex-wrap gap-x-4 gap-y-1 pl-6">
++                                                {group.permissions.map((permission) => (
++                                                    <label key={permission} className="flex items-center gap-1.5 text-xs text-gray-600">
++                                                        <input
++                                                            type="checkbox"
++                                                            checked={selectedPermissions.includes(permission)}
++                                                            onChange={() => togglePermission(permission)}
++                                                            className="h-3.5 w-3.5 rounded border-gray-300 text-primary-600"
++                                                        />
++                                                        {permission}
++                                                    </label>
++                                                ))}
++                                            </div>
++                                        </div>
++                                    );
++                                })}
++                            </div>
++                        </div>
++
++                        <div className="flex justify-end gap-3">
++                            <button type="button" onClick={resetForm} className="px-4 py-2 text-sm font-medium border rounded-md">
++                                Annuler
++                            </button>
++                            <button
++                                type="submit"
++                                disabled={saving}
++                                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50"
++                            >
++                                {saving ? 'Enregistrement...' : editingRole ? 'Mettre à jour' : 'Créer le rôle'}
++                            </button>
++                        </div>
++                    </form>
++                </Card>
++            )}
++
++            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
++                {roles.map((role) => (
++                    <Card key={role.id}>
++                        <div className="flex items-start justify-between">
++                            <div className="flex items-center gap-2">
++                                {role.is_system ? (
++                                    <LockClosedIcon className="h-5 w-5 text-gray-400" />
++                                ) : (
++                                    <ShieldCheckIcon className="h-5 w-5 text-primary-600" />
++                                )}
++                                <div>
++                                    <p className="font-medium text-gray-900">{role.name}</p>
++                                    <p className="text-xs text-gray-500">
++                                        {role.users_count} utilisateur{role.users_count > 1 ? 's' : ''}
++                                        {role.is_system && ' · rôle système'}
++                                    </p>
++                                </div>
++                            </div>
++                            {!role.is_system && (
++                                <div className="flex gap-1">
++                                    {hasPermission('edit_roles') && (
++                                        <button
++                                            type="button"
++                                            onClick={() => editRole(role)}
++                                            className="text-xs text-primary-600 hover:underline"
++                                        >
++                                            Modifier
++                                        </button>
++                                    )}
++                                    {hasPermission('delete_roles') && (
++                                        <button
++                                            type="button"
++                                            onClick={() => {
++                                                if (confirm(`Supprimer le rôle « ${role.name} » ?`)) {
++                                                    deleteMutation.mutate(role.id);
++                                                }
++                                            }}
++                                            disabled={deleteMutation.isPending}
++                                            className="p-1 text-danger-600 hover:text-danger-900 disabled:opacity-50"
++                                        >
++                                            <TrashIcon className="h-4 w-4" />
++                                        </button>
++                                    )}
++                                </div>
++                            )}
++                        </div>
++                        <div className="mt-3 flex flex-wrap gap-1">
++                            {role.permissions.slice(0, 6).map((p) => (
++                                <span key={p} className="px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded">
++                                    {p}
++                                </span>
++                            ))}
++                            {role.permissions.length > 6 && (
++                                <span className="px-1.5 py-0.5 text-[10px] text-gray-400">
++                                    +{role.permissions.length - 6}
++                                </span>
++                            )}
++                        </div>
++                    </Card>
++                ))}
++            </div>
++        </div>
++    );
++};
++
++export default Roles;

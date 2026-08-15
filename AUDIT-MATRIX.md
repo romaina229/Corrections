@@ -203,8 +203,60 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration`.
+
+⚠️ `16-admin-migrations.patch` doit être appliqué avant `16-admin-user-controller.patch`/`16-admin-role-controller.patch` (colonnes `tenant_id`, `invited_at`, `last_login_at` requises). Après application, exécuter `php artisan migrate` avant tout test.
+
+## Module Administration Utilisateurs / Rôles / Permissions (16) — état au dépôt du 2026-08-15
+
+Nouveau module, absent du cahier des charges initial sous cette
+forme précise mais couvrant l'anomalie P2 « Administration
+Utilisateurs / Rôles / Permissions » de l'ordre de travail retenu.
+Portée validée avec l'utilisateur : création directe **et**
+invitation par e-mail, rôles personnalisables à la carte.
+
+### Découverte critique avant construction
+
+La table `roles` (Spatie Permission) est **globale à toute
+l'installation**, sans `tenant_id`. Construire des rôles
+personnalisés dessus sans correction aurait exposé un risque réel de
+fuite entre organisations (deux tenants ne pouvant même pas nommer un
+rôle personnalisé de la même façon, et rien n'empêchant
+techniquement qu'un rôle créé par un tenant soit visible/assignable
+par un autre). Corrigé par migration avant toute autre modification.
+
+### Contenu des patchs
+
+| Patch | Contenu |
+|---|---|
+| `16-admin-migrations.patch` | `roles.tenant_id` nullable (`null` = rôle système partagé en lecture seule, valeur = rôle personnalisé scopé au tenant), contrainte d'unicité ajustée (`tenant_id`+`name`+`guard_name`). `users.invited_at`/`users.last_login_at` nullable. |
+| `16-admin-user-controller.patch` | `UserController` : liste (recherche, filtre rôle/statut, exclusion des comptes `super_admin` de la vue tenant), création directe (mot de passe posé par l'admin), **invitation** (réutilise `Password::sendResetLink()` — le mécanisme standard « mot de passe oublié » de Laravel, aucune nouvelle table ni notification à maintenir), modification (rôle/statut), désactivation logique (`destroy()` ne supprime jamais physiquement), renvoi d'invitation. Protections : impossible de se désactiver soi-même, impossible de retirer le rôle `admin_org` au dernier administrateur actif du tenant. |
+| `16-admin-role-controller.patch` | `RoleController` : liste (rôles système + personnalisés du tenant courant, avec compteur d'utilisateurs), création/modification/suppression de rôles personnalisés uniquement (rôles système protégés par `assertCustomRole()`), suppression bloquée si le rôle est encore attribué à des utilisateurs, endpoint permissions groupées par domaine pour l'éditeur de permissions du frontend. |
+| `16-admin-routes-and-auth.patch` | Routes `/users`, `/users/invite`, `/users/{user}/resend-invitation`, `/roles`, `/permissions` (nouvelles permissions `view_users`/`create_users`/`edit_users`/`delete_users`/`view_roles`/`create_roles`/`edit_roles`/`delete_roles` ajoutées au seeder). `AuthController::login()` met à jour `last_login_at`. |
+| `16-admin-frontend-api.patch` | Types `Role`, `PermissionGroup`, `AdminUser` + client `src/api/administration.ts`. |
+| `16-admin-frontend-users-page.patch` | Page `Users.tsx` : liste avec recherche, formulaire à bascule Invitation/Création directe, changement de rôle en ligne, désactivation/réactivation, renvoi d'invitation, badge « Invité, non activé ». |
+| `16-admin-frontend-roles-page.patch` | Page `Roles.tsx` : cartes rôles système (verrouillées) + personnalisés, éditeur de permissions groupées par domaine avec sélection de groupe entier en un clic, suppression protégée. |
+| `16-admin-frontend-integration.patch` | Entrées de menu « Utilisateurs » et « Rôles & permissions » (section Système), routes `/users` et `/roles`. |
+
+### Validation
+
+- **24/24 patchs frontend** (02 → 16) appliqués en cumulé réel.
+- **16/16 patchs backend** (01 → 16) appliqués en cumulé réel.
+- **`tsc -b --force` sur le frontend complet : 0 erreur** — une
+  erreur réelle trouvée et corrigée en cours de route (import
+  `ArrowPathIcon` inutilisé dans `Users.tsx`).
+- **`oxlint` : 0 erreur**, 1 avertissement préexistant dans
+  `AdminDashboard.tsx` (fichier non modifié par ce module).
+
+### Point d'attention pour l'intégration
+
+L'envoi réel des e-mails d'invitation dépend de la configuration
+`MAIL_MAILER` de l'environnement cible. Avec la valeur par défaut du
+`.env.example` (`log`), les invitations sont écrites dans les logs
+Laravel au lieu d'être réellement envoyées — comportement normal en
+développement, à changer (`smtp`, `ses`, etc.) avant mise en
+production.
 
 ⚠️ Pour le frontend, l'ordre entre `09-frontend` et les trois patchs `10-employee-exits-*` est obligatoire (pas seulement recommandé) : ils modifient le même bloc de `Sidebar.tsx` et ont été rebasés les uns sur les autres dans cet ordre précis.
 

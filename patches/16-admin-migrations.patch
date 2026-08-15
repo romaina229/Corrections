@@ -1,0 +1,95 @@
+diff --git a/app/Models/User.php b/app/Models/User.php
+index 42cb776..5176bc9 100644
+--- a/app/Models/User.php
++++ b/app/Models/User.php
+@@ -23,6 +23,8 @@ class User extends Authenticatable implements CanResetPasswordContract
+         'phone',
+         'profile_photo',
+         'status',
++        'invited_at',
++        'last_login_at',
+     ];
+ 
+     protected $hidden = [
+@@ -32,6 +34,8 @@ class User extends Authenticatable implements CanResetPasswordContract
+ 
+     protected $casts = [
+         'email_verified_at' => 'datetime',
++        'invited_at' => 'datetime',
++        'last_login_at' => 'datetime',
+     ];
+ 
+     public function tenant()
+diff --git a/database/migrations/2026_08_15_105902_add_tenant_id_to_roles_table.php b/database/migrations/2026_08_15_105902_add_tenant_id_to_roles_table.php
+new file mode 100644
+index 0000000..869e10a
+--- /dev/null
++++ b/database/migrations/2026_08_15_105902_add_tenant_id_to_roles_table.php
+@@ -0,0 +1,39 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration {
++    public function up(): void
++    {
++        Schema::table('roles', function (Blueprint $table) {
++            // NULL = rôle système partagé (admin_org, manager, employee...),
++            // visible en lecture par tous les tenants mais non modifiable
++            // par eux. Une valeur = rôle personnalisé créé par ce tenant,
++            // visible et gérable uniquement par lui.
++            $table->foreignId('tenant_id')->nullable()->after('id')
++                ->constrained()->cascadeOnDelete();
++        });
++
++        Schema::table('roles', function (Blueprint $table) {
++            $table->dropUnique(['name', 'guard_name']);
++            $table->unique(['tenant_id', 'name', 'guard_name']);
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::table('roles', function (Blueprint $table) {
++            $table->dropUnique(['tenant_id', 'name', 'guard_name']);
++        });
++
++        Schema::table('roles', function (Blueprint $table) {
++            $table->dropConstrainedForeignId('tenant_id');
++        });
++
++        Schema::table('roles', function (Blueprint $table) {
++            $table->unique(['name', 'guard_name']);
++        });
++    }
++};
+diff --git a/database/migrations/2026_08_15_105903_add_invitation_tracking_to_users_table.php b/database/migrations/2026_08_15_105903_add_invitation_tracking_to_users_table.php
+new file mode 100644
+index 0000000..a4d55f7
+--- /dev/null
++++ b/database/migrations/2026_08_15_105903_add_invitation_tracking_to_users_table.php
+@@ -0,0 +1,22 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration {
++    public function up(): void
++    {
++        Schema::table('users', function (Blueprint $table) {
++            $table->timestamp('invited_at')->nullable()->after('status');
++            $table->timestamp('last_login_at')->nullable()->after('invited_at');
++        });
++    }
++
++    public function down(): void
++    {
++        Schema::table('users', function (Blueprint $table) {
++            $table->dropColumn(['invited_at', 'last_login_at']);
++        });
++    }
++};
