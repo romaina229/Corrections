@@ -1,0 +1,99 @@
+diff --git a/app/Http/Controllers/Api/PaymentController.php b/app/Http/Controllers/Api/PaymentController.php
+new file mode 100644
+index 0000000..3d4ac0e
+--- /dev/null
++++ b/app/Http/Controllers/Api/PaymentController.php
+@@ -0,0 +1,65 @@
++<?php
++
++namespace App\Http\Controllers\Api;
++
++use App\Http\Controllers\Controller;
++use App\Services\FedaPayService;
++use Illuminate\Http\Request;
++use Illuminate\Support\Facades\Log;
++
++class PaymentController extends Controller
++{
++    public function checkout(Request $request, FedaPayService $fedaPay)
++    {
++        $data = $request->validate([
++            'plan' => 'required|string|in:starter,standard,business',
++            'billing_cycle' => 'required|in:monthly,yearly',
++        ]);
++
++        $tenant = app('tenant');
++
++        $callbackUrl = rtrim((string) env('FRONTEND_URL', config('app.url')), '/') . '/subscription/callback';
++
++        $payment = $fedaPay->createCheckout($tenant, $data['plan'], $data['billing_cycle'], $callbackUrl);
++
++        return response()->json([
++            'checkout_url' => $payment->checkout_url,
++            'payment_id' => $payment->id,
++        ]);
++    }
++
++    /**
++     * Endpoint public (hors auth:sanctum et hors middleware tenant) —
++     * FedaPay ne porte aucune session utilisateur lors de l'appel.
++     * La sécurité repose entièrement sur la vérification de signature.
++     */
++    public function webhook(Request $request, FedaPayService $fedaPay)
++    {
++        $payload = $request->getContent();
++        $signature = $request->header('X-FEDAPAY-SIGNATURE');
++
++        if (! $signature) {
++            return response()->json(['message' => 'Signature manquante'], 400);
++        }
++
++        try {
++            $event = $fedaPay->verifyWebhookSignature($payload, $signature);
++        } catch (\Throwable $e) {
++            Log::warning('Webhook FedaPay rejeté : signature invalide', ['error' => $e->getMessage()]);
++
++            return response()->json(['message' => 'Signature invalide'], 400);
++        }
++
++        try {
++            $fedaPay->handleEvent($event);
++        } catch (\Throwable $e) {
++            // On répond tout de même 200 pour éviter des retries en
++            // boucle sur une erreur de notre côté déjà loguée ;
++            // l'événement reste consultable depuis le dashboard FedaPay
++            // pour un renvoi manuel si nécessaire.
++            report($e);
++        }
++
++        return response()->json(['received' => true]);
++    }
++}
+diff --git a/routes/api.php b/routes/api.php
+index b25b6ce..c1510de 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -21,6 +21,7 @@
+ use App\Http\Controllers\Api\ReportController;
+ use App\Http\Controllers\Api\SettingsController;
+ use App\Http\Controllers\Api\SubscriptionController;
++use App\Http\Controllers\Api\PaymentController;
+ use App\Http\Controllers\Api\TrainingController;
+ use App\Http\Controllers\Api\UserController;
+ use App\Http\Controllers\Api\RoleController;
+@@ -32,6 +33,7 @@
+ Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+ Route::get('/payslips/verify/{qrToken}', [PayrollController::class, 'verify']);
++Route::post('/webhooks/fedapay', [PaymentController::class, 'webhook']);
+ 
+ Route::middleware('auth:sanctum')->group(function () {
+     Route::post('/logout', [AuthController::class, 'logout']);
+@@ -227,6 +229,7 @@
+             Route::post('/settings/logo', [SettingsController::class, 'updateLogo']);
+             Route::get('/subscription', [SubscriptionController::class, 'show']);
+         });
++        Route::post('/subscription/checkout', [PaymentController::class, 'checkout'])->middleware('permission:view_settings');
+         Route::put('/profile', [SettingsController::class, 'updateProfile']);
+ 
+         Route::middleware('permission:view_users')->group(function () {

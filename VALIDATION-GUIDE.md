@@ -54,10 +54,16 @@ git apply /chemin/vers/Corrections/patches/17-reports-export-service.patch
 git apply /chemin/vers/Corrections/patches/17-reports-controller.patch
 git apply /chemin/vers/Corrections/patches/18-saas-subscription-backend.patch
 git apply /chemin/vers/Corrections/patches/18-saas-seat-limit.patch
+git apply /chemin/vers/Corrections/patches/19-fedapay-setup.patch
+git apply /chemin/vers/Corrections/patches/19-fedapay-service.patch
+git apply /chemin/vers/Corrections/patches/19-fedapay-controller-routes.patch
 
-composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2 phpoffice/phpspreadsheet:^3.5
+composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2 phpoffice/phpspreadsheet:^3.5 fedapay/fedapay-php:^1.5
 php artisan migrate
 php artisan db:seed --class=RolePermissionSeeder
+
+# Remplir FEDAPAY_SECRET_KEY, FEDAPAY_PUBLIC_KEY, FEDAPAY_WEBHOOK_SECRET
+# dans .env (voir .env.example) avant tout test de paiement.
 php -l app/Http/Controllers/Api/*.php   # sanity check syntaxe
 php artisan route:list --path=leaves
 php artisan route:list --path=contracts
@@ -97,6 +103,8 @@ git apply /chemin/vers/Corrections/patches/16-admin-frontend-integration.patch
 git apply /chemin/vers/Corrections/patches/17-reports-frontend.patch
 git apply /chemin/vers/Corrections/patches/18-saas-subscription-frontend-page.patch
 git apply /chemin/vers/Corrections/patches/18-saas-subscription-frontend-integration.patch
+git apply /chemin/vers/Corrections/patches/19-fedapay-frontend-subscription-page.patch
+git apply /chemin/vers/Corrections/patches/19-fedapay-frontend-callback.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -183,6 +191,16 @@ compte des patchs précédents dans cette séquence exacte.
 - [ ] Page « Mon abonnement » : vérifier que la barre d'usage des sièges reflète le bon compte
 - [ ] Faire expirer manuellement `subscription_expires_at` dans les 7 prochains jours pour un tenant de test → l'alerte d'expiration proche doit apparaître
 - [ ] Vérifier qu'un tenant au forfait « enterprise » n'a jamais de limite affichée ni appliquée
+
+**Module 19 — Paiement FedaPay (nécessite un compte Sandbox actif et des clés dans `.env`)**
+- [ ] Configurer un endpoint webhook dans le tableau de bord FedaPay (Workbench → Webhooks) pointant vers `https://votre-domaine/api/webhooks/fedapay` — nécessite une URL publique HTTPS (utiliser `ngrok` en local pour tester avant déploiement)
+- [ ] Copier le secret webhook généré par FedaPay dans `FEDAPAY_WEBHOOK_SECRET`
+- [ ] Depuis « Mon abonnement », cliquer « Choisir ce forfait » sur Starter → vérifier la redirection vers une vraie page de paiement FedaPay
+- [ ] Réaliser un paiement de test (voir les numéros/cartes de test fournis par FedaPay dans leur documentation Sandbox)
+- [ ] **Vérifier dans les logs Laravel (`storage/logs/laravel.log`) le format exact du payload webhook reçu** — si `FedaPayService::handleEvent()` ne trouve pas l'identifiant de transaction, un avertissement `Webhook FedaPay : impossible de déterminer l'identifiant de transaction` apparaît avec le payload brut ; ajuster le chemin d'extraction dans le code si nécessaire à ce moment-là
+- [ ] Une fois le paiement confirmé, vérifier que `subscription_expires_at` du tenant a bien été prolongé et que `subscription_plan` correspond au forfait acheté
+- [ ] Retester un paiement refusé (carte de test dédiée) → le statut du `Payment` doit passer à `declined`, l'abonnement ne doit pas être modifié
+- [ ] Rejouer manuellement le même webhook depuis le tableau de bord FedaPay (bouton « Redeliver ») → l'abonnement ne doit pas être prolongé une seconde fois (test d'idempotence)
 
 ## En cas d'échec d'un `git apply`
 

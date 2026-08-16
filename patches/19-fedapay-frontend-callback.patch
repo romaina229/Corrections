@@ -1,0 +1,116 @@
+diff --git a/src/pages/settings/SubscriptionCallback.tsx b/src/pages/settings/SubscriptionCallback.tsx
+new file mode 100644
+index 0000000..11ff823
+--- /dev/null
++++ b/src/pages/settings/SubscriptionCallback.tsx
+@@ -0,0 +1,90 @@
++import React, { useEffect, useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import Card from '../../components/common/Card';
++import axios from '../../api/axios';
++import type { SubscriptionInfo } from '../../types';
++import { CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
++
++const POLL_INTERVAL_MS = 3000;
++const MAX_ATTEMPTS = 10;
++
++const SubscriptionCallback: React.FC = () => {
++    const navigate = useNavigate();
++    const [status, setStatus] = useState<'checking' | 'confirmed' | 'pending'>('checking');
++    const [attempts, setAttempts] = useState(0);
++
++    useEffect(() => {
++        let cancelled = false;
++
++        const check = async (): Promise<void> => {
++            try {
++                const response = await axios.get<SubscriptionInfo>('/subscription');
++                if (cancelled) return;
++
++                if (response.data.subscription?.is_active) {
++                    setStatus('confirmed');
++                    return;
++                }
++            } catch {
++                // on retente silencieusement
++            }
++
++            if (cancelled) return;
++
++            setAttempts((prev) => {
++                const next = prev + 1;
++                if (next >= MAX_ATTEMPTS) {
++                    setStatus('pending');
++                } else {
++                    setTimeout(check, POLL_INTERVAL_MS);
++                }
++                return next;
++            });
++        };
++
++        check();
++        return () => { cancelled = true; };
++    }, []);
++
++    return (
++        <div className="max-w-lg mx-auto mt-16">
++            <Card>
++                <div className="text-center py-8">
++                    {status === 'confirmed' ? (
++                        <>
++                            <CheckCircleIcon className="h-14 w-14 text-green-600 mx-auto mb-4" />
++                            <h1 className="text-xl font-bold text-gray-900">Paiement confirmé</h1>
++                            <p className="text-gray-500 mt-2">Votre forfait a été mis à jour avec succès.</p>
++                        </>
++                    ) : status === 'pending' ? (
++                        <>
++                            <ClockIcon className="h-14 w-14 text-yellow-600 mx-auto mb-4" />
++                            <h1 className="text-xl font-bold text-gray-900">Paiement en cours de traitement</h1>
++                            <p className="text-gray-500 mt-2">
++                                Votre paiement est en cours de confirmation. Cela peut prendre quelques minutes —
++                                rechargez cette page plus tard si votre forfait n'apparaît pas encore à jour.
++                            </p>
++                        </>
++                    ) : (
++                        <>
++                            <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-200 border-t-primary-600 mx-auto mb-4" />
++                            <h1 className="text-xl font-bold text-gray-900">Vérification du paiement...</h1>
++                            <p className="text-gray-500 mt-2">
++                                Merci de patienter quelques instants{attempts > 0 ? ` (tentative ${attempts}/${MAX_ATTEMPTS})` : ''}.
++                            </p>
++                        </>
++                    )}
++                    <button
++                        type="button"
++                        onClick={() => navigate('/subscription')}
++                        className="mt-6 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
++                    >
++                        Voir mon abonnement
++                    </button>
++                </div>
++            </Card>
++        </div>
++    );
++};
++
++export default SubscriptionCallback;
+diff --git a/src/routes/AppRoutes.tsx b/src/routes/AppRoutes.tsx
+index 67c0970..5860bbe 100644
+--- a/src/routes/AppRoutes.tsx
++++ b/src/routes/AppRoutes.tsx
+@@ -44,6 +44,7 @@ import Trainings from '../pages/trainings/Trainings';
+ import Reports from '../pages/reports/Reports';
+ import Settings from '../pages/settings/Settings';
+ import Subscription from '../pages/settings/Subscription';
++import SubscriptionCallback from '../pages/settings/SubscriptionCallback';
+ import Users from '../pages/admin/Users';
+ import Roles from '../pages/admin/Roles';
+ import Profile from '../pages/settings/Profile';
+@@ -137,6 +138,7 @@ const AppRoutes = () => {
+                             {/* Paramètres */}
+                             <Route path="/settings" element={<Settings />} />
+                             <Route path="/subscription" element={<Subscription />} />
++                            <Route path="/subscription/callback" element={<SubscriptionCallback />} />
+                             <Route path="/users" element={<Users />} />
+                             <Route path="/roles" element={<Roles />} />
+                             <Route path="/profile" element={<Profile />} />

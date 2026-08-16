@@ -203,8 +203,47 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller` → `18-saas-subscription-backend` → `18-saas-seat-limit`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend` → `18-saas-subscription-frontend-page` → `18-saas-subscription-frontend-integration`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller` → `18-saas-subscription-backend` → `18-saas-seat-limit` → `19-fedapay-setup` → `19-fedapay-service` → `19-fedapay-controller-routes`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend` → `18-saas-subscription-frontend-page` → `18-saas-subscription-frontend-integration` → `19-fedapay-frontend-subscription-page` → `19-fedapay-frontend-callback`.
+
+## Module Paiement FedaPay (19) — état au dépôt du 2026-08-16
+
+Premier prestataire de paiement intégré parmi ceux listés dans
+`config/sds_rh.php` (`fedapay`, `kkiapay`, `card`, `paypal`,
+`transfer`). Choix de l'utilisateur : FedaPay en premier. Compte
+marchand pas encore créé au moment du développement — l'intégration
+a donc été construite à partir de la **documentation officielle
+vérifiée** (`docs.fedapay.com`), pas testée avec de vraies clés.
+
+### Pattern retenu : redirection (Feda Checkout hébergé)
+
+Conforme à la recommandation officielle FedaPay (« nous recommandons
+de préférer le mode redirection [...] afin de bénéficier de tous les
+moyens de paiement »). Flux : `Transaction::create()` →
+`generateToken()` → redirection du navigateur vers `token->url`,
+page de paiement hébergée par FedaPay elle-même. Aucune donnée de
+carte ou de mobile money ne transite jamais par nos serveurs.
+
+### Contenu des patchs
+
+| Patch | Contenu |
+|---|---|
+| `19-fedapay-setup.patch` | SDK `fedapay/fedapay-php` ajouté à `composer.json`. Config `services.fedapay` (clé secrète, clé publique, environnement, secret webhook — tout lu depuis `.env`, jamais codé en dur). `.env.example` documenté. Migration `payments` (traçabilité de chaque tentative : statut, montant, transaction FedaPay, payload brut reçu). Modèle `Payment`. |
+| `19-fedapay-service.patch` | `FedaPayService` : `createCheckout()` (calcule le montant depuis `config('sds_rh.plans')`, crée la transaction FedaPay, génère le lien de paiement, trace la tentative), `verifyWebhookSignature()` (utilise `\FedaPay\Webhook::constructEvent()`, la vérification officielle du SDK — jamais de vérification de signature « maison »), `handleEvent()` (idempotent : un même événement rejoué par FedaPay ne prolonge jamais deux fois l'abonnement), `markApproved()` (prolonge `subscription_expires_at`, crée un enregistrement `Subscription`, réactive le tenant si besoin). |
+| `19-fedapay-controller-routes.patch` | `PaymentController::checkout()` (authentifié, `permission:view_settings`, refuse les forfaits gratuit/entreprise). `PaymentController::webhook()` — **route publique**, hors `auth:sanctum` et hors middleware tenant (FedaPay n'a aucune session utilisateur), sécurité entièrement assurée par la vérification de signature SDK. Répond toujours `200` même en cas d'erreur de traitement interne pour éviter une boucle de nouvelles tentatives FedaPay, l'erreur étant tout de même journalisée (`report()`). |
+| `19-fedapay-frontend-subscription-page.patch` | Page `Subscription.tsx` complétée : 3 forfaits payants affichés avec leur tarif exact (`config/sds_rh.php`), bouton redirigeant vers la page de paiement FedaPay hébergée. |
+| `19-fedapay-frontend-callback.patch` | Nouvelle page `SubscriptionCallback.tsx` (`/subscription/callback`, URL de retour FedaPay) : sondage court (jusqu'à 10 tentatives, 3 s d'intervalle) de `GET /subscription` pour détecter la confirmation avant que le webhook n'ait fini d'être traité côté serveur. |
+
+### ⚠️ Points à vérifier obligatoirement avec de vraies clés Sandbox avant mise en production
+
+1. **Format exact du payload webhook** : la documentation FedaPay ne détaille pas explicitement le nom du champ contenant l'identifiant de transaction dans l'objet `$event`. `FedaPayService::handleEvent()` essaie plusieurs chemins probables (`$event->object->id`, `$event->entity->id`, `$event->data->id`) et **journalise le payload brut dans tous les cas** (`Log::warning` + colonne `raw_payload`) pour permettre l'ajustement dès le premier vrai webhook reçu en Sandbox.
+2. **Numéro de téléphone du client** : `createCheckout()` suppose un indicatif pays `'bj'` (Bénin) par défaut — à adapter si vos organisations clientes sont dans d'autres pays UEMOA.
+3. **`FRONTEND_URL`** doit être une URL **publique et joignable par FedaPay** en production (pas `localhost`) pour que la redirection de callback fonctionne — sans lien avec le webhook lui-même, qui nécessite en plus une URL backend HTTPS publique déclarée manuellement dans le tableau de bord FedaPay (Workbench → Webhooks), étape non automatisable et à faire une fois le backend déployé.
+4. Aucune option **annuelle avec remise** n'existe dans `config/sds_rh.php` (seul `price_xof_monthly` est défini) — le cycle « yearly » actuel se contente de multiplier par 12 sans remise. À ajuster si une politique de remise annuelle est souhaitée.
+
+### Explicitement non couvert par ce module
+
+Kkiapay, carte bancaire directe (hors FedaPay), PayPal, virement manuel — à intégrer séparément, un prestataire à la fois, selon la même méthode (vérification documentation officielle avant tout code).
 
 ## Module Préparation SaaS — limite de sièges + espace client (18) — état au dépôt du 2026-08-15
 

@@ -1,0 +1,78 @@
+diff --git a/src/pages/settings/Subscription.tsx b/src/pages/settings/Subscription.tsx
+index 7339e37..6899d9d 100644
+--- a/src/pages/settings/Subscription.tsx
++++ b/src/pages/settings/Subscription.tsx
+@@ -1,8 +1,9 @@
+-import React from 'react';
++import React, { useState } from 'react';
+ import { useQuery } from '@tanstack/react-query';
+ import Card from '../../components/common/Card';
+ import Loading from '../../components/common/Loading';
+ import axios from '../../api/axios';
++import toast from 'react-hot-toast';
+ import type { SubscriptionInfo } from '../../types';
+ import { CheckCircleIcon, ExclamationTriangleIcon, UsersIcon, CalendarIcon } from '@heroicons/react/24/outline';
+ 
+@@ -20,6 +21,21 @@ const Subscription: React.FC = () => {
+         queryFn: async () => (await axios.get<SubscriptionInfo>('/subscription')).data,
+         staleTime: 60_000,
+     });
++    const [upgrading, setUpgrading] = useState<string | null>(null);
++
++    const upgrade = async (plan: 'starter' | 'standard' | 'business', cycle: 'monthly' | 'yearly'): Promise<void> => {
++        setUpgrading(`${plan}-${cycle}`);
++        try {
++            const response = await axios.post<{ checkout_url: string }>('/subscription/checkout', {
++                plan,
++                billing_cycle: cycle,
++            });
++            window.location.href = response.data.checkout_url;
++        } catch (error: any) {
++            toast.error(error.response?.data?.message || 'Erreur lors de la création du paiement');
++            setUpgrading(null);
++        }
++    };
+ 
+     if (isPending) {
+         return <Loading fullScreen />;
+@@ -171,8 +187,38 @@ const Subscription: React.FC = () => {
+             )}
+ 
+             <Card>
+-                <p className="text-sm text-gray-500">
+-                    Besoin de changer de forfait ou de renouveler votre abonnement ? Contactez notre équipe.
++                <h3 className="text-sm font-semibold text-gray-700 mb-4">Changer de forfait</h3>
++                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
++                    {([
++                        { key: 'starter', label: 'Starter', price: '5 000 FCFA/mois', max: '20 employés' },
++                        { key: 'standard', label: 'Standard', price: '15 000 FCFA/mois', max: '50 employés' },
++                        { key: 'business', label: 'Business', price: '35 000 FCFA/mois', max: '150 employés' },
++                    ] as const).map((plan) => (
++                        <div key={plan.key} className="border rounded-lg p-4">
++                            <p className="font-semibold text-gray-900">{plan.label}</p>
++                            <p className="text-sm text-gray-500 mt-1">{plan.price}</p>
++                            <p className="text-xs text-gray-400 mt-1">Jusqu'à {plan.max}</p>
++                            <button
++                                type="button"
++                                onClick={() => upgrade(plan.key, 'monthly')}
++                                disabled={upgrading !== null || tenant.subscription_plan === plan.key}
++                                className="mt-3 w-full px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50"
++                            >
++                                {tenant.subscription_plan === plan.key
++                                    ? 'Forfait actuel'
++                                    : upgrading === `${plan.key}-monthly`
++                                        ? 'Redirection...'
++                                        : 'Choisir ce forfait'}
++                            </button>
++                        </div>
++                    ))}
++                </div>
++                <p className="text-xs text-gray-400 mt-4">
++                    Le paiement est traité par FedaPay. Vous serez redirigé vers une page de paiement sécurisée,
++                    puis renvoyé automatiquement ici une fois le paiement confirmé.
++                </p>
++                <p className="text-sm text-gray-500 mt-4">
++                    Besoin du forfait Entreprise (plus de 150 employés) ? Contactez notre équipe pour un devis personnalisé.
+                 </p>
+             </Card>
+         </div>

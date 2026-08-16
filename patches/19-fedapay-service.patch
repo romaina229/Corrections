@@ -1,0 +1,180 @@
+diff --git a/app/Services/FedaPayService.php b/app/Services/FedaPayService.php
+new file mode 100644
+index 0000000..6738e40
+--- /dev/null
++++ b/app/Services/FedaPayService.php
+@@ -0,0 +1,174 @@
++<?php
++
++namespace App\Services;
++
++use App\Models\Payment;
++use App\Models\Subscription;
++use App\Models\Tenant;
++use Carbon\Carbon;
++use FedaPay\FedaPay;
++use FedaPay\Transaction;
++use FedaPay\Webhook;
++use Illuminate\Support\Facades\Log;
++
++class FedaPayService
++{
++    public function __construct()
++    {
++        FedaPay::setApiKey((string) config('services.fedapay.secret_key'));
++        FedaPay::setEnvironment((string) config('services.fedapay.environment', 'sandbox'));
++    }
++
++    /**
++     * Crée une transaction FedaPay pour un changement/renouvellement de
++     * forfait et renvoie l'URL de paiement hébergée vers laquelle
++     * rediriger le client (mode « redirection », recommandé par FedaPay
++     * pour bénéficier de tous les moyens de paiement disponibles).
++     */
++    public function createCheckout(Tenant $tenant, string $planKey, string $billingCycle, string $callbackUrl): Payment
++    {
++        $plan = config("sds_rh.plans.{$planKey}");
++
++        abort_if($plan === null, 422, 'Forfait inconnu.');
++        abort_if($plan['custom_quote'] ?? false, 422, 'Ce forfait nécessite un devis personnalisé, contactez-nous.');
++
++        $months = $billingCycle === 'yearly' ? 12 : 1;
++        $amount = (int) round(($plan['price_xof_monthly'] ?? 0) * $months);
++
++        abort_if($amount <= 0, 422, 'Ce forfait est gratuit, aucun paiement n\'est nécessaire.');
++
++        $adminUser = $tenant->users()->role('admin_org')->first() ?? $tenant->users()->first();
++
++        $transaction = Transaction::create([
++            'description' => "Abonnement SDS-RH — forfait {$plan['db_name']} ({$billingCycle})",
++            'amount' => $amount,
++            'currency' => ['iso' => 'XOF'],
++            'callback_url' => $callbackUrl,
++            'customer' => [
++                'firstname' => $adminUser->first_name ?? $tenant->name,
++                'lastname' => $adminUser->last_name ?? '—',
++                'email' => $adminUser->email ?? $tenant->email,
++                'phone_number' => $tenant->phone ? [
++                    'number' => $tenant->phone,
++                    'country' => 'bj',
++                ] : null,
++            ],
++        ]);
++
++        $token = $transaction->generateToken();
++
++        return Payment::create([
++            'tenant_id' => $tenant->id,
++            'provider' => 'fedapay',
++            'provider_transaction_id' => (string) $transaction->id,
++            'plan' => $planKey,
++            'billing_cycle' => $billingCycle,
++            'amount' => $amount,
++            'currency' => 'XOF',
++            'status' => 'pending',
++            'checkout_url' => $token->url,
++        ]);
++    }
++
++    /**
++     * Vérifie l'authenticité du webhook (signature FedaPay) et renvoie
++     * l'événement décodé. Lève une exception si la signature est
++     * invalide — l'appelant doit répondre 400 dans ce cas.
++     */
++    public function verifyWebhookSignature(string $payload, string $signatureHeader): object
++    {
++        return Webhook::constructEvent($payload, $signatureHeader, (string) config('services.fedapay.webhook_secret'));
++    }
++
++    /**
++     * Traite un événement webhook déjà vérifié. Idempotent : un même
++     * événement reçu plusieurs fois (retries FedaPay) ne double jamais
++     * l'effet, on se base sur le statut déjà enregistré du Payment.
++     */
++    public function handleEvent(object $event): void
++    {
++        // Le SDK FedaPay expose la ressource concernée sous différentes
++        // formes selon les versions ; on essaie les chemins les plus
++        // courants et on logue le payload brut pour audit dans tous les
++        // cas, y compris si l'extraction échoue.
++        $transactionId = $event->object->id
++            ?? $event->entity->id
++            ?? $event->data->id
++            ?? null;
++
++        if (! $transactionId) {
++            Log::warning('Webhook FedaPay : impossible de déterminer l\'identifiant de transaction', [
++                'event_name' => $event->name ?? null,
++                'payload' => json_decode(json_encode($event), true),
++            ]);
++
++            return;
++        }
++
++        $payment = Payment::where('provider', 'fedapay')
++            ->where('provider_transaction_id', (string) $transactionId)
++            ->first();
++
++        if (! $payment) {
++            Log::warning('Webhook FedaPay : aucun paiement local correspondant', [
++                'provider_transaction_id' => $transactionId,
++                'event_name' => $event->name ?? null,
++            ]);
++
++            return;
++        }
++
++        $payment->raw_payload = json_decode(json_encode($event), true);
++
++        match ($event->name ?? null) {
++            'transaction.approved' => $this->markApproved($payment),
++            'transaction.declined' => $payment->update(['status' => 'declined']),
++            'transaction.canceled' => $payment->update(['status' => 'canceled']),
++            default => $payment->save(),
++        };
++    }
++
++    private function markApproved(Payment $payment): void
++    {
++        if ($payment->status === 'approved') {
++            // Déjà traité (retry webhook) — on ne prolonge pas deux fois.
++            return;
++        }
++
++        $tenant = $payment->tenant;
++        $plan = config("sds_rh.plans.{$payment->plan}");
++        $months = $payment->billing_cycle === 'yearly' ? 12 : 1;
++
++        $currentEnd = $tenant->subscription_expires_at && $tenant->subscription_expires_at->isFuture()
++            ? $tenant->subscription_expires_at
++            : Carbon::now();
++
++        $newEnd = $currentEnd->copy()->addMonths($months);
++
++        $subscription = Subscription::create([
++            'tenant_id' => $tenant->id,
++            'plan' => $payment->plan,
++            'price' => $payment->amount,
++            'currency' => $payment->currency,
++            'billing_cycle' => $payment->billing_cycle,
++            'start_date' => Carbon::now(),
++            'end_date' => $newEnd,
++            'status' => 'active',
++            'features' => ['employee_limit_max' => $plan['max'] === PHP_INT_MAX ? null : $plan['max']],
++            'payment_reference' => $payment->provider_transaction_id,
++            'payment_method' => 'fedapay',
++        ]);
++
++        $tenant->update([
++            'subscription_plan' => $plan['db_name'],
++            'subscription_expires_at' => $newEnd,
++            'is_active' => true,
++        ]);
++
++        $payment->update([
++            'status' => 'approved',
++            'subscription_id' => $subscription->id,
++            'paid_at' => Carbon::now(),
++        ]);
++    }
++}
