@@ -1,0 +1,28 @@
+diff --git a/app/Http/Controllers/Api/TrainingController.php b/app/Http/Controllers/Api/TrainingController.php
+index a3f939a..5ba0f65 100644
+--- a/app/Http/Controllers/Api/TrainingController.php
++++ b/app/Http/Controllers/Api/TrainingController.php
+@@ -117,6 +117,11 @@ public function destroy(Training $training)
+ 
+     public function enroll(Request $request, Training $training)
+     {
++        if ($request->user()->hasRole('employee')) {
++            abort_unless($request->user()->employee, 403, 'Aucun dossier employé associé à ce compte.');
++            $request->merge(['employee_id' => $request->user()->employee->id]);
++        }
++
+         $request->validate([
+             'employee_id' => [
+                 'required',
+@@ -124,11 +129,6 @@ public function enroll(Request $request, Training $training)
+             ],
+         ]);
+ 
+-        if ($request->user()->hasRole('employee')) {
+-            abort_unless($request->user()->employee, 403, 'Aucun dossier employé associé à ce compte.');
+-            $request->merge(['employee_id' => $request->user()->employee->id]);
+-        }
+-
+         $existing = TrainingParticipant::where('training_id', $training->id)
+             ->where('employee_id', $request->employee_id)
+             ->first();

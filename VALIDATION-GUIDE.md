@@ -57,6 +57,8 @@ git apply /chemin/vers/Corrections/patches/18-saas-seat-limit.patch
 git apply /chemin/vers/Corrections/patches/19-fedapay-setup.patch
 git apply /chemin/vers/Corrections/patches/19-fedapay-service.patch
 git apply /chemin/vers/Corrections/patches/19-fedapay-controller-routes.patch
+git apply /chemin/vers/Corrections/patches/20-downloads-cors-backend.patch
+git apply /chemin/vers/Corrections/patches/20-trainings-enroll-fix.patch
 
 composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2 phpoffice/phpspreadsheet:^3.5 fedapay/fedapay-php:^1.5
 php artisan migrate
@@ -105,6 +107,9 @@ git apply /chemin/vers/Corrections/patches/18-saas-subscription-frontend-page.pa
 git apply /chemin/vers/Corrections/patches/18-saas-subscription-frontend-integration.patch
 git apply /chemin/vers/Corrections/patches/19-fedapay-frontend-subscription-page.patch
 git apply /chemin/vers/Corrections/patches/19-fedapay-frontend-callback.patch
+git apply /chemin/vers/Corrections/patches/20-downloads-frontend.patch
+git apply /chemin/vers/Corrections/patches/20-register-cedeao-and-password.patch
+git apply /chemin/vers/Corrections/patches/20-login-password-toggle.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -201,6 +206,14 @@ compte des patchs précédents dans cette séquence exacte.
 - [ ] Une fois le paiement confirmé, vérifier que `subscription_expires_at` du tenant a bien été prolongé et que `subscription_plan` correspond au forfait acheté
 - [ ] Retester un paiement refusé (carte de test dédiée) → le statut du `Payment` doit passer à `declined`, l'abonnement ne doit pas être modifié
 - [ ] Rejouer manuellement le même webhook depuis le tableau de bord FedaPay (bouton « Redeliver ») → l'abonnement ne doit pas être prolongé une seconde fois (test d'idempotence)
+
+**Module 20 — Corrections signalées par l'utilisateur**
+- [ ] Télécharger un document (Documents, portail employé, fiche employé), un contrat, une pièce jointe de congé → chaque fichier doit s'ouvrir avec son extension réelle (`.pdf`, `.docx`, `.jpg`...), plus jamais `.txt`
+- [ ] Tester spécifiquement un contrat/document uploadé en `.docx` ou `.jpg` (pas seulement `.pdf`) pour confirmer que l'extension suit le vrai type de fichier
+- [ ] En tant qu'employé, ouvrir Formations et cliquer « S'inscrire » sur une formation → doit réussir sans erreur 422
+- [ ] Page d'inscription : vérifier que seuls les 15 pays CEDEAO apparaissent, que changer de pays met à jour l'indicatif téléphonique affiché en placeholder, et que la devise de facturation (étape 2) reste indépendante du pays choisi
+- [ ] Créer un compte avec un pays hors zone XOF (ex: Ghana, Nigeria) → l'inscription doit aboutir normalement, facturée en XOF/EUR/USD selon l'étape 2, sans erreur de validation backend
+- [ ] Sur Connexion et Inscription, cliquer l'icône œil sur chaque champ mot de passe → doit afficher/masquer la saisie sans recharger la page ni perdre le focus
 
 ## En cas d'échec d'un `git apply`
 

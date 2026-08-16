@@ -1,0 +1,267 @@
+diff --git a/src/pages/contracts/ContractShow.tsx b/src/pages/contracts/ContractShow.tsx
+index 2949aa3..19ec2c2 100644
+--- a/src/pages/contracts/ContractShow.tsx
++++ b/src/pages/contracts/ContractShow.tsx
+@@ -6,6 +6,7 @@ import ContractAmendments from '../../pages/contracts/ContractAmendments';
+ import type { Contract } from '../../types';
+ import toast from 'react-hot-toast';
+ import axios from '../../api/axios';
++import { downloadBlobResponse, extensionFromPath } from '../../utils/downloadFile';
+ import {
+     ArrowLeftIcon,
+     PencilIcon,
+@@ -90,14 +91,8 @@ const ContractShow: React.FC = () => {
+             const response = await axios.get(`/contracts/${contract.id}/download`, {
+                 responseType: 'blob',
+             });
+-            const url = window.URL.createObjectURL(new Blob([response.data]));
+-            const link = document.createElement('a');
+-            link.href = url;
+-            link.download = `contrat-${contract.employee?.employee_number || contract.employee_id}-${contract.id}`;
+-            document.body.appendChild(link);
+-            link.click();
+-            link.remove();
+-            window.URL.revokeObjectURL(url);
++            const extension = extensionFromPath(contract.contract_file) || '.pdf';
++            downloadBlobResponse(response, `contrat-${contract.employee?.employee_number || contract.employee_id}-${contract.id}${extension}`);
+         } catch (error) {
+             toast.error('Erreur lors du téléchargement du contrat');
+         }
+diff --git a/src/pages/documents/Documents.tsx b/src/pages/documents/Documents.tsx
+index 1f5bdd5..78948aa 100644
+--- a/src/pages/documents/Documents.tsx
++++ b/src/pages/documents/Documents.tsx
+@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
+ import type { Document } from '../../types';
+ import toast from 'react-hot-toast';
+ import axios from '../../api/axios';
++import { downloadBlobResponse } from '../../utils/downloadFile';
+ import {
+     PlusIcon,
+     DocumentIcon,
+@@ -89,18 +90,12 @@ const Documents: React.FC = () => {
+         }
+     };
+ 
+-    const handleDownload = async (id: number): Promise<void> => {
++    const handleDownload = async (doc: Document): Promise<void> => {
+         try {
+-            const response = await axios.get(`/documents/${id}/download`, {
++            const response = await axios.get(`/documents/${doc.id}/download`, {
+                 responseType: 'blob',
+             });
+-            const url = window.URL.createObjectURL(new Blob([response.data]));
+-            const link = document.createElement('a');
+-            link.href = url;
+-            link.download = response.headers['content-disposition']?.split('filename=')[1] || 'document';
+-            document.body.appendChild(link);
+-            link.click();
+-            link.remove();
++            downloadBlobResponse(response, doc.file_name || doc.name);
+         } catch (error) {
+             toast.error('Erreur lors du téléchargement');
+         }
+@@ -239,7 +234,7 @@ const Documents: React.FC = () => {
+                             </div>
+                             <div className="flex space-x-2">
+                                 <button
+-                                    onClick={() => handleDownload(doc.id)}
++                                    onClick={() => handleDownload(doc)}
+                                     className="p-1 text-blue-600 hover:text-blue-900"
+                                 >
+                                     <DownloadIcon className="h-4 w-4" />
+diff --git a/src/pages/employees/EmployeeShow.tsx b/src/pages/employees/EmployeeShow.tsx
+index e95e3bb..a148220 100644
+--- a/src/pages/employees/EmployeeShow.tsx
++++ b/src/pages/employees/EmployeeShow.tsx
+@@ -8,6 +8,7 @@ import { employees } from '../../api/employees';
+ import { useAuth } from '../../context/AuthContext';
+ import axios from '../../api/axios';
+ import toast from 'react-hot-toast';
++import { downloadBlobResponse, extensionFromPath } from '../../utils/downloadFile';
+ import type { Employee, EmployeeHistory } from '../../types';
+ import {
+     PencilIcon,
+@@ -110,32 +111,19 @@ const EmployeeShow: React.FC = () => {
+             const response = await axios.get(`/documents/${docId}/download`, {
+                 responseType: 'blob',
+             });
+-            const url = window.URL.createObjectURL(new Blob([response.data]));
+-            const link = document.createElement('a');
+-            link.href = url;
+-            link.download = fileName || 'document';
+-            document.body.appendChild(link);
+-            link.click();
+-            link.remove();
+-            window.URL.revokeObjectURL(url);
++            downloadBlobResponse(response, fileName || 'document');
+         } catch (error) {
+             toast.error('Erreur lors du téléchargement du document');
+         }
+     };
+ 
+-    const handleDownloadContract = async (contractId: number, employeeNumber?: string): Promise<void> => {
++    const handleDownloadContract = async (contractId: number, employeeNumber?: string, contractFilePath?: string): Promise<void> => {
+         try {
+             const response = await axios.get(`/contracts/${contractId}/download`, {
+                 responseType: 'blob',
+             });
+-            const url = window.URL.createObjectURL(new Blob([response.data]));
+-            const link = document.createElement('a');
+-            link.href = url;
+-            link.download = `contrat-${employeeNumber || id}-${contractId}.pdf`;
+-            document.body.appendChild(link);
+-            link.click();
+-            link.remove();
+-            window.URL.revokeObjectURL(url);
++            const extension = extensionFromPath(contractFilePath) || '.pdf';
++            downloadBlobResponse(response, `contrat-${employeeNumber || id}-${contractId}${extension}`);
+         } catch (error) {
+             toast.error('Erreur lors du téléchargement du contrat');
+         }
+@@ -314,7 +302,7 @@ const EmployeeShow: React.FC = () => {
+                                         {contract.contract_file && (
+                                             <button
+                                                 type="button"
+-                                                onClick={() => handleDownloadContract(contract.id, employee.employee_number)}
++                                                onClick={() => handleDownloadContract(contract.id, employee.employee_number, contract.contract_file)}
+                                                 className="p-1.5 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded-md"
+                                                 title="Télécharger le contrat"
+                                             >
+diff --git a/src/pages/leaves/LeaveShow.tsx b/src/pages/leaves/LeaveShow.tsx
+index ce712d1..9b84518 100644
+--- a/src/pages/leaves/LeaveShow.tsx
++++ b/src/pages/leaves/LeaveShow.tsx
+@@ -6,6 +6,7 @@ import Loading from '../../components/common/Loading';
+ import { useAuth } from '../../context/AuthContext';
+ import toast from 'react-hot-toast';
+ import axios from '../../api/axios';
++import { downloadBlobResponse, extensionFromPath } from '../../utils/downloadFile';
+ import type { Leave } from '../../types';
+ import { ArrowLeftIcon, ArrowDownTrayIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+ 
+@@ -75,14 +76,8 @@ const LeaveShow: React.FC = () => {
+     const downloadAttachment = async (): Promise<void> => {
+         try {
+             const response = await axios.get(`/leaves/${id}/attachment`, { responseType: 'blob' });
+-            const url = window.URL.createObjectURL(new Blob([response.data]));
+-            const link = document.createElement('a');
+-            link.href = url;
+-            link.download = `piece-jointe-conge-${id}`;
+-            document.body.appendChild(link);
+-            link.click();
+-            link.remove();
+-            window.URL.revokeObjectURL(url);
++            const extension = extensionFromPath(leave?.attachment) || '.pdf';
++            downloadBlobResponse(response, `piece-jointe-conge-${id}${extension}`);
+         } catch (error) {
+             toast.error('Erreur lors du téléchargement de la pièce jointe');
+         }
+diff --git a/src/pages/portal/MyDocuments.tsx b/src/pages/portal/MyDocuments.tsx
+index 5ae1617..9f6a4b3 100644
+--- a/src/pages/portal/MyDocuments.tsx
++++ b/src/pages/portal/MyDocuments.tsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
+ import Card from '../../components/common/Card';
+ import Loading from '../../components/common/Loading';
+ import { portal } from '../../api/portal';
++import { downloadBlobResponse } from '../../utils/downloadFile';
+ import toast from 'react-hot-toast';
+ import {
+     PlusIcon,
+@@ -15,6 +16,7 @@ import {
+ interface PortalDocument {
+     id: number;
+     name: string;
++    file_name?: string;
+     type: string;
+     file_size: number;
+     expiry_date?: string | null;
+@@ -118,14 +120,7 @@ const MyDocuments: React.FC = () => {
+     const handleDownload = async (doc: PortalDocument): Promise<void> => {
+         try {
+             const response = await portal.downloadDocument(doc.id);
+-            const url = window.URL.createObjectURL(new Blob([response.data]));
+-            const link = document.createElement('a');
+-            link.href = url;
+-            link.download = doc.name;
+-            document.body.appendChild(link);
+-            link.click();
+-            link.remove();
+-            window.URL.revokeObjectURL(url);
++            downloadBlobResponse(response, doc.file_name || doc.name);
+         } catch (error) {
+             toast.error('Erreur lors du téléchargement');
+         }
+diff --git a/src/utils/downloadFile.ts b/src/utils/downloadFile.ts
+new file mode 100644
+index 0000000..6b03103
+--- /dev/null
++++ b/src/utils/downloadFile.ts
+@@ -0,0 +1,66 @@
++import type { AxiosResponse } from 'axios';
++
++/**
++ * Extrait le nom de fichier réel d'un en-tête Content-Disposition
++ * (« attachment; filename="bulletin.pdf" » ou la variante RFC 5987
++ * « filename*=UTF-8''bulletin.pdf »). Retourne null si l'en-tête est
++ * absent ou illisible.
++ */
++function extractFilenameFromContentDisposition(headerValue?: string): string | null {
++    if (!headerValue) return null;
++
++    const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
++    if (utf8Match?.[1]) {
++        try {
++            return decodeURIComponent(utf8Match[1]);
++        } catch {
++            // valeur mal encodée, on retente le format simple ci-dessous
++        }
++    }
++
++    const simpleMatch = headerValue.match(/filename="?([^";]+)"?/i);
++    return simpleMatch?.[1]?.trim() || null;
++}
++
++/**
++ * Déclenche le téléchargement d'une réponse Axios en Blob, avec le
++ * nom de fichier et le type MIME réels chaque fois que possible.
++ *
++ * Ordre de priorité pour le nom de fichier :
++ * 1. En-tête Content-Disposition renvoyé par le serveur (nécessite
++ *    que le backend l'expose via CORS — voir config/cors.php).
++ * 2. `fallbackFilename` fourni par l'appelant — DOIT inclure une
++ *    extension exacte et cohérente avec le fichier réel, jamais une
++ *    extension devinée ou codée en dur (ex: ne pas supposer .pdf
++ *    pour un fichier qui pourrait être .docx ou .jpg).
++ *
++ * Ne jamais laisser le navigateur retomber sur .txt par défaut :
++ * c'est ce qui se produit quand `download` n'a pas d'extension et
++ * que le Blob n'a pas de type MIME reconnu.
++ */
++export function downloadBlobResponse(response: AxiosResponse<Blob>, fallbackFilename: string): void {
++    const contentType = String(response.headers?.['content-type'] || 'application/octet-stream');
++    const filename =
++        extractFilenameFromContentDisposition(response.headers?.['content-disposition']) || fallbackFilename;
++
++    const blob = new Blob([response.data], { type: contentType });
++    const url = window.URL.createObjectURL(blob);
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = filename;
++    document.body.appendChild(link);
++    link.click();
++    link.remove();
++    window.URL.revokeObjectURL(url);
++}
++
++/**
++ * Extrait l'extension (avec le point) d'un chemin de fichier stocké
++ * côté serveur (ex: "contracts/12/3/fichier-abc123.docx" → ".docx").
++ * Retourne une chaîne vide si aucune extension n'est détectable.
++ */
++export function extensionFromPath(path?: string | null): string {
++    if (!path) return '';
++    const match = path.match(/\.[a-zA-Z0-9]+$/);
++    return match ? match[0] : '';
++}

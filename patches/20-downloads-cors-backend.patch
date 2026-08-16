@@ -1,0 +1,14 @@
+diff --git a/config/cors.php b/config/cors.php
+index f843555..b116dbc 100644
+--- a/config/cors.php
++++ b/config/cors.php
+@@ -6,7 +6,7 @@
+     'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env('FRONTEND_URLS', env('FRONTEND_URL', 'http://localhost:3000')))))),
+     'allowed_origins_patterns' => [],
+     'allowed_headers' => ['*'],
+-    'exposed_headers' => [],
++    'exposed_headers' => ['Content-Disposition'],
+     'max_age' => 0,
+     'supports_credentials' => false,
+ ];
+\ No newline at end of file

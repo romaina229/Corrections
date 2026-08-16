@@ -203,8 +203,119 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller` → `18-saas-subscription-backend` → `18-saas-seat-limit` → `19-fedapay-setup` → `19-fedapay-service` → `19-fedapay-controller-routes`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend` → `18-saas-subscription-frontend-page` → `18-saas-subscription-frontend-integration` → `19-fedapay-frontend-subscription-page` → `19-fedapay-frontend-callback`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller` → `18-saas-subscription-backend` → `18-saas-seat-limit` → `19-fedapay-setup` → `19-fedapay-service` → `19-fedapay-controller-routes` → `20-downloads-cors-backend` → `20-trainings-enroll-fix`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend` → `18-saas-subscription-frontend-page` → `18-saas-subscription-frontend-integration` → `19-fedapay-frontend-subscription-page` → `19-fedapay-frontend-callback` → `20-downloads-frontend` → `20-register-cedeao-and-password` → `20-login-password-toggle`.
+
+## Module Corrections signalées par l'utilisateur (20) — état au dépôt du 2026-08-16
+
+Quatre bugs remontés en conditions d'usage réel, tous confirmés et
+corrigés.
+
+### 1. Téléchargements de pièces jointes en `.txt` (site entier)
+
+**Cause racine** : `config/cors.php` avait `'exposed_headers' => []` —
+le navigateur ne pouvait jamais lire l'en-tête `Content-Disposition`
+renvoyé par le serveur, même quand celui-ci contenait le bon nom de
+fichier. Le nom de téléchargement retombait sur une valeur par défaut
+sans extension, et le navigateur ajoutait `.txt` de lui-même.
+
+En creusant, **6 points de téléchargement distincts** étaient
+concernés, pas un seul :
+- `Documents.tsx` et `MyDocuments.tsx` (portail employé) : dépendaient
+  de l'en-tête CORS bloqué, avec un parsing fragile en repli.
+- `EmployeeShow.tsx` (téléchargement de contrat) : extension `.pdf`
+  **codée en dur**, fausse si le fichier réel était un `.docx` ou une
+  image (le formulaire de contrat accepte pdf/jpg/jpeg/png/doc/docx).
+- `ContractShow.tsx` et `LeaveShow.tsx` : **aucune extension du
+  tout**.
+
+| Patch | Contenu |
+|---|---|
+| `20-downloads-cors-backend.patch` | `config/cors.php` expose désormais `Content-Disposition`. |
+| `20-downloads-frontend.patch` | Nouvel utilitaire partagé `src/utils/downloadFile.ts` (lit le vrai nom de fichier si disponible via l'en-tête, sinon utilise un nom de repli qui inclut toujours la vraie extension — déduite du chemin de stockage réel côté serveur, jamais devinée ni codée en dur). Les 5 pages concernées migrées vers cet utilitaire commun. |
+
+### 2. Inscription aux formations inaccessible pour les employés
+
+**Cause racine confirmée** : dans `TrainingController::enroll()`, la
+validation qui exige `employee_id` s'exécutait **avant** le code qui
+remplit automatiquement ce champ pour un employé s'inscrivant
+lui-même. Tout employé cliquant sur « S'inscrire » recevait donc une
+erreur 422 immédiate (« le champ employee_id est requis »), avant
+même que la logique d'auto-remplissage ne s'exécute — d'où
+l'impression d'un lien « inaccessible ».
+
+| Patch | Contenu |
+|---|---|
+| `20-trainings-enroll-fix.patch` | Inversion de l'ordre : l'auto-remplissage de `employee_id` pour un compte employé s'exécute désormais avant la validation, pas après. |
+
+**Bug apparenté trouvé mais non corrigé (hors périmètre demandé)** :
+`TrainingController::complete()` exige aussi `employee_id` en
+paramètre, mais le bouton frontend correspondant (`handleComplete`,
+visible par les managers/RH sur `Trainings.tsx`) ne l'envoie jamais et
+ne propose aucune sélection de participant — ce flux semble
+structurellement incomplet. Non traité ici faute de décision produit
+claire (quel participant marquer comme complété, et comment le
+sélectionner dans l'UI) ; à reprendre sur demande explicite.
+
+### 3. Page d'inscription — restriction aux pays CEDEAO
+
+Liste des pays remplacée par les **15 pays membres actuels ou
+historiques de la CEDEAO** (dont Mali, Burkina Faso, Niger — retirés
+officiellement en 2025 mais réintégrés à la liste à la demande
+explicite de l'utilisateur, marchés jugés toujours pertinents
+commercialement), chacun avec son indicatif téléphonique réel.
+
+**Point d'architecture clarifié avant modification** : le champ
+`country` envoyé au backend n'a jamais été un vrai identifiant
+géographique — c'est historiquement un **alias de la devise de
+facturation**, validé côté serveur en `in:XOF,EUR,USD` uniquement (le
+moteur de paiement FedaPay du module 19 ne facture qu'en XOF). Le
+sélecteur « Pays » et le sélecteur « Devise de facturation » étaient
+donc couplés à tort dans le code d'origine.
+
+**Décision prise** : découplage propre plutôt que branchement
+approximatif sur un mécanisme de devise qui ne le supporte pas
+réellement.
+- Le sélecteur « Pays » pilote désormais uniquement l'affichage et
+  préremplit l'indicatif téléphonique du champ Téléphone.
+- Le sélecteur « Devise de facturation » (étape 2, déjà existant,
+  XOF/EUR/USD) reste seul responsable du champ `country` envoyé au
+  backend — comportement de facturation inchangé et donc sans risque
+  pour le moteur de paiement.
+- Aucune conversion de change n'a été inventée pour les devises non
+  supportées (GHS, NGN, GMD, GNF, LRD, SLL, CVE) : les organisations
+  de ces pays peuvent s'inscrire et choisir leur pays réel, mais sont
+  facturées en XOF (ou EUR/USD) comme aujourd'hui, faute de moteur de
+  change fiable en place.
+
+| Patch | Contenu |
+|---|---|
+| `20-register-cedeao-and-password.patch` | Liste `COUNTRIES` remplacée par les 15 pays CEDEAO (nom, devise informative, indicatif téléphonique). Sélecteur Pays découplé de la devise de facturation. Placeholder du champ téléphone dynamique selon le pays choisi, préremplissage de l'indicatif si le champ est vide. Contient aussi le correctif du point 4 (voir ci-dessous) pour `Register.tsx`. |
+
+### 4. Icône œil sur les champs mot de passe (connexion + inscription)
+
+Nouveau composant réutilisable `PasswordInput.tsx` (bascule
+afficher/masquer, compatible `react-hook-form` via `{...register()}`
+comme un `<input>` classique). Appliqué à `Login.tsx` et aux deux
+champs mot de passe de `Register.tsx`, conformément à la demande.
+
+**Autres emplacements avec un champ mot de passe repérés mais non
+modifiés** (hors périmètre explicitement demandé — « page inscription
+ou page de connexion ») : `ResetPassword.tsx`, `Profile.tsx`,
+formulaire de création directe d'utilisateur dans `admin/Users.tsx`.
+Le composant `PasswordInput` est prêt à y être réutilisé sur simple
+demande.
+
+| Patch | Contenu |
+|---|---|
+| `20-login-password-toggle.patch` | Nouveau `PasswordInput.tsx`, appliqué à `Login.tsx`. |
+
+### Validation
+
+- **24/24 patchs backend** (01 → 20) appliqués en cumulé réel.
+- **31/31 patchs frontend** (02 → 20) appliqués en cumulé réel.
+- **`tsc -b --force` : 0 erreur. `oxlint` : 0 erreur** (avertissements
+  restants tous préexistants, sans rapport avec ce module).
 
 ## Module Paiement FedaPay (19) — état au dépôt du 2026-08-16
 
