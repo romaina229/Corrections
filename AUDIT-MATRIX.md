@@ -203,8 +203,63 @@ Le calcul des heures supplémentaires (`overtime_hours`) reste calculé côté b
 
 ### Ordre d'application requis (testé cumulé, sans conflit au 2026-08-13)
 
-Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller` → `18-saas-subscription-backend` → `18-saas-seat-limit` → `19-fedapay-setup` → `19-fedapay-service` → `19-fedapay-controller-routes` → `20-downloads-cors-backend` → `20-trainings-enroll-fix`.
-Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend` → `18-saas-subscription-frontend-page` → `18-saas-subscription-frontend-integration` → `19-fedapay-frontend-subscription-page` → `19-fedapay-frontend-callback` → `20-downloads-frontend` → `20-register-cedeao-and-password` → `20-login-password-toggle`.
+Backend : `01` → `03` → `06` → `07-backend` → `08` → `09-backend` → `10-employee-exits-backend` → `11-attendance-double-clockin` → `12-overtime-backend` → `13-leaves-backend` → `15-employees-backend-tenant` → `15-dashboard-employee-payroll` → `16-admin-migrations` → `16-admin-user-controller` → `16-admin-role-controller` → `16-admin-routes-and-auth` → `17-reports-export-service` → `17-reports-controller` → `18-saas-subscription-backend` → `18-saas-seat-limit` → `19-fedapay-setup` → `19-fedapay-service` → `19-fedapay-controller-routes` → `20-downloads-cors-backend` → `20-trainings-enroll-fix` → `21-logo-url-backend`.
+Frontend : `02` → `03-portal-payslip-api-frontend` → `06-frontend` → `07-frontend` → `09-frontend` → `10-employee-exits-frontend` → `10-employee-terminate-page` → `10-employee-exits-integration` → `11-attendance-frontend` → `11-attendance-qr-local` → `12-overtime-frontend-page` → `12-overtime-frontend-integration` → `13-leaves-frontend-list` → `13-leaves-frontend-create` → `13-leaves-frontend-show` → `14-dashboard-stats-frontend` → `15-employees-frontend-query-filter` → `15-employee-show-frontend-query` → `15-dashboard-frontend-query` → `15-spa-navigation-guard` → `16-admin-frontend-api` → `16-admin-frontend-users-page` → `16-admin-frontend-roles-page` → `16-admin-frontend-integration` → `17-reports-frontend` → `18-saas-subscription-frontend-page` → `18-saas-subscription-frontend-integration` → `19-fedapay-frontend-subscription-page` → `19-fedapay-frontend-callback` → `20-downloads-frontend` → `20-register-cedeao-and-password` → `20-login-password-toggle` → `21-logo-url-frontend`.
+
+## Module Logo de l'organisation ne s'affiche pas (21) — état au dépôt du 2026-08-16
+
+Bug confirmé, causé par **trois problèmes cumulés**, pas un seul —
+ce qui explique pourquoi le titre (texte) s'affichait normalement
+alors que la photo restait invisible.
+
+### Diagnostic
+
+1. **`tenant.logo` n'a jamais été une URL valide.** En base, ce champ
+   contient le chemin de stockage brut (ex :
+   `tenants/5/logo-abc123.png`), pas une URL exploitable directement
+   dans un `<img src>`. Seule la réponse ponctuelle de
+   `SettingsController::updateLogo()` calculait une vraie URL
+   (`logo_url`) — mais uniquement pour cette requête précise, jamais
+   pour l'objet `tenant` renvoyé par la connexion, l'inscription ou
+   `/auth/me`.
+2. **`OrganizationBanner.tsx` et `Settings.tsx` utilisaient
+   `tenant.logo`** (le chemin brut) directement comme `src` d'image —
+   ce qui ne pouvait jamais fonctionner, y compris juste après un
+   rechargement de page suivant un upload pourtant réussi.
+3. **Après un upload réussi, le contexte global (`AuthContext`)
+   n'était jamais mis à jour.** Seul l'aperçu local de la page
+   Paramètres se rafraîchissait ; la bannière d'organisation (visible
+   sur le Dashboard) restait donc sur l'ancien logo (ou sur l'état
+   cassé) tant que l'utilisateur ne se reconnectait pas.
+
+### Corrections
+
+| Patch | Contenu |
+|---|---|
+| `21-logo-url-backend.patch` | Nouvel accesseur `Tenant::getLogoUrlAttribute()` + `$appends = ['logo_url']` : chaque sérialisation du modèle `Tenant` (connexion, inscription, `/auth/me`, mise à jour du logo) inclut désormais automatiquement une URL absolue prête à l'emploi, calculée via `Storage::disk('public')->url()`. `SettingsController::updateLogo()` simplifié pour utiliser ce même accesseur (une seule source de vérité). |
+| `21-logo-url-frontend.patch` | Type `Tenant` complété (`logo_url`). `OrganizationBanner.tsx` et `Settings.tsx` utilisent désormais `tenant.logo_url` au lieu du chemin brut. Nouvelle fonction `updateTenant()` exposée par `AuthContext` : après un upload réussi, le contexte global est mis à jour immédiatement — la bannière d'organisation reflète le nouveau logo sans avoir besoin de se reconnecter. |
+
+### ⚠️ Prérequis de déploiement à vérifier absolument
+
+Même avec ces corrections, l'affichage du logo **ne fonctionnera pas**
+si le lien symbolique du disque public n'existe pas sur le serveur.
+Exécuter, une seule fois par environnement :
+
+```bash
+php artisan storage:link
+```
+
+Sans cette commande, `storage/app/public` n'est pas exposé sous
+`public/storage`, et toute URL de logo renverra une 404 malgré une
+URL par ailleurs correctement construite. Ajouté explicitement à
+`VALIDATION-GUIDE.md`.
+
+### Validation
+
+- **25/25 patchs backend** (01 → 21) appliqués en cumulé réel.
+- **32/32 patchs frontend** (02 → 21) appliqués en cumulé réel.
+- **`tsc -b --force` : 0 erreur. `oxlint` : 0 erreur** (1 avertissement
+  préexistant sans rapport, structure de fichier `AuthContext.tsx`).
 
 ## Module Corrections signalées par l'utilisateur (20) — état au dépôt du 2026-08-16
 

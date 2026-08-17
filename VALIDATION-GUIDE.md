@@ -59,10 +59,15 @@ git apply /chemin/vers/Corrections/patches/19-fedapay-service.patch
 git apply /chemin/vers/Corrections/patches/19-fedapay-controller-routes.patch
 git apply /chemin/vers/Corrections/patches/20-downloads-cors-backend.patch
 git apply /chemin/vers/Corrections/patches/20-trainings-enroll-fix.patch
+git apply /chemin/vers/Corrections/patches/21-logo-url-backend.patch
 
 composer require barryvdh/laravel-dompdf:^3.1 simplesoftwareio/simple-qrcode:^4.2 phpoffice/phpspreadsheet:^3.5 fedapay/fedapay-php:^1.5
 php artisan migrate
 php artisan db:seed --class=RolePermissionSeeder
+php artisan storage:link
+# ⚠️ Étape obligatoire, à exécuter une seule fois par environnement.
+# Sans elle, aucune image téléversée (logo d'organisation compris)
+# ne sera jamais accessible publiquement, même avec une URL correcte.
 
 # Remplir FEDAPAY_SECRET_KEY, FEDAPAY_PUBLIC_KEY, FEDAPAY_WEBHOOK_SECRET
 # dans .env (voir .env.example) avant tout test de paiement.
@@ -110,6 +115,7 @@ git apply /chemin/vers/Corrections/patches/19-fedapay-frontend-callback.patch
 git apply /chemin/vers/Corrections/patches/20-downloads-frontend.patch
 git apply /chemin/vers/Corrections/patches/20-register-cedeao-and-password.patch
 git apply /chemin/vers/Corrections/patches/20-login-password-toggle.patch
+git apply /chemin/vers/Corrections/patches/21-logo-url-frontend.patch
 
 npm install
 npm run build   # tsc -b && vite build : doit passer sans erreur
@@ -214,6 +220,13 @@ compte des patchs précédents dans cette séquence exacte.
 - [ ] Page d'inscription : vérifier que seuls les 15 pays CEDEAO apparaissent, que changer de pays met à jour l'indicatif téléphonique affiché en placeholder, et que la devise de facturation (étape 2) reste indépendante du pays choisi
 - [ ] Créer un compte avec un pays hors zone XOF (ex: Ghana, Nigeria) → l'inscription doit aboutir normalement, facturée en XOF/EUR/USD selon l'étape 2, sans erreur de validation backend
 - [ ] Sur Connexion et Inscription, cliquer l'icône œil sur chaque champ mot de passe → doit afficher/masquer la saisie sans recharger la page ni perdre le focus
+
+**Module 21 — Logo de l'organisation**
+- [ ] **Vérifier en premier** que `php artisan storage:link` a bien été exécuté sur l'environnement de test (sinon tout le reste échouera même avec le code corrigé)
+- [ ] Paramètres → téléverser un nouveau logo → doit s'afficher immédiatement sur la page Paramètres elle-même
+- [ ] Sans recharger la page, retourner au Dashboard → la bannière d'organisation doit déjà refléter le nouveau logo (test du rafraîchissement du contexte global)
+- [ ] Recharger complètement la page (F5) après upload → le logo doit rester affiché (test de la persistance via `logo_url`, plus de dépendance à un état local volatile)
+- [ ] Se déconnecter puis se reconnecter → le logo doit apparaître dès la connexion, sans passer par la page Paramètres
 
 ## En cas d'échec d'un `git apply`
 

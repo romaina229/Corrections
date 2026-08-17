@@ -1,0 +1,49 @@
+diff --git a/app/Http/Controllers/Api/SettingsController.php b/app/Http/Controllers/Api/SettingsController.php
+index 787d30f..88bd080 100644
+--- a/app/Http/Controllers/Api/SettingsController.php
++++ b/app/Http/Controllers/Api/SettingsController.php
+@@ -73,7 +73,7 @@ public function updateLogo(Request $request)
+ 
+         return response()->json([
+             'message' => 'Logo mis à jour avec succès',
+-            'logo_url' => Storage::url($path),
++            'logo_url' => $tenant->fresh()->logo_url,
+             'tenant' => $tenant->fresh(),
+         ]);
+     }
+diff --git a/app/Models/Tenant.php b/app/Models/Tenant.php
+index 140448f..433fd6e 100644
+--- a/app/Models/Tenant.php
++++ b/app/Models/Tenant.php
+@@ -7,6 +7,8 @@
+ 
+ class Tenant extends Model
+ {
++    protected $appends = ['logo_url'];
++
+     protected $fillable = [
+         'name',
+         'emitting_authority',
+@@ -107,6 +109,22 @@ public function isSubscriptionActive(): bool
+                $this->is_active;
+     }
+ 
++    /**
++     * URL absolue et directement utilisable du logo, ou null si aucun
++     * logo n'a été téléversé. Calculée depuis le disque 'public' —
++     * jamais le chemin de stockage brut, qui n'est pas une URL valide
++     * telle quelle. Nécessite que `php artisan storage:link` ait été
++     * exécuté (lien symbolique public/storage -> storage/app/public).
++     */
++    public function getLogoUrlAttribute(): ?string
++    {
++        if (! $this->logo) {
++            return null;
++        }
++
++        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->logo);
++    }
++
+     public function getPayslipHeaderNameAttribute(): string
+     {
+         return $this->emitting_authority ?: $this->name;

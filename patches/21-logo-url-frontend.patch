@@ -1,0 +1,93 @@
+diff --git a/src/components/dashboard/OrganizationBanner.tsx b/src/components/dashboard/OrganizationBanner.tsx
+index 140bc2f..4f6051b 100644
+--- a/src/components/dashboard/OrganizationBanner.tsx
++++ b/src/components/dashboard/OrganizationBanner.tsx
+@@ -26,8 +26,8 @@ const OrganizationBanner: React.FC = () => {
+         <div className="rounded-2xl bg-gradient-to-r from-primary-900 via-primary-800 to-primary-700 text-white px-6 py-5 flex items-center justify-between shadow-sm">
+             <div className="flex items-center gap-4 min-w-0">
+                 <div className="h-12 w-12 shrink-0 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center overflow-hidden">
+-                    {tenant.logo ? (
+-                        <img src={tenant.logo} alt={tenant.name} className="h-full w-full object-contain" />
++                    {tenant.logo_url ? (
++                        <img src={tenant.logo_url} alt={tenant.name} className="h-full w-full object-contain" />
+                     ) : (
+                         <span className="font-bold text-lg">{initials}</span>
+                     )}
+diff --git a/src/context/AuthContext.tsx b/src/context/AuthContext.tsx
+index eb6b88f..624320c 100644
+--- a/src/context/AuthContext.tsx
++++ b/src/context/AuthContext.tsx
+@@ -14,6 +14,7 @@ interface AuthContextType {
+     logout: () => Promise<void>;
+     hasPermission: (permission: string) => boolean;
+     hasRole: (role: string) => boolean;
++    updateTenant: (patch: Partial<Tenant>) => void;
+     isAdmin: boolean;
+     isManager: boolean;
+     isEmployee: boolean;
+@@ -143,6 +144,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
+         return roles.includes('super_admin') || roles.includes(role);
+     };
+ 
++    const updateTenant = (patch: Partial<Tenant>): void => {
++        setTenant((prev) => (prev ? { ...prev, ...patch } : prev));
++    };
++
+     const value: AuthContextType = {
+         user,
+         tenant,
+@@ -154,6 +159,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
+         logout,
+         hasPermission,
+         hasRole,
++        updateTenant,
+         isAdmin: roles.includes('admin_org') || roles.includes('super_admin'),
+         isManager: roles.includes('manager'),
+         isEmployee: roles.includes('employee'),
+diff --git a/src/pages/settings/Settings.tsx b/src/pages/settings/Settings.tsx
+index 49b7049..12f33f6 100644
+--- a/src/pages/settings/Settings.tsx
++++ b/src/pages/settings/Settings.tsx
+@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
+ import axios from '../../api/axios';
+ 
+ const Settings: React.FC = () => {
+-    const { tenant } = useAuth();
++    const { tenant, updateTenant } = useAuth();
+     const [loading, setLoading] = useState<boolean>(false);
+     const [uploadingLogo, setUploadingLogo] = useState<boolean>(false);
+     const [logoPreview, setLogoPreview] = useState<string | null>(null);
+@@ -42,7 +42,7 @@ const Settings: React.FC = () => {
+                 company_ifu: tenant.ifu || '',
+                 company_rccm: tenant.rccm || '',
+             }));
+-            setLogoPreview(tenant.logo || null);
++            setLogoPreview(tenant.logo_url || null);
+         }
+     }, [tenant]);
+ 
+@@ -93,10 +93,11 @@ const Settings: React.FC = () => {
+                 headers: { 'Content-Type': 'multipart/form-data' },
+             });
+             setLogoPreview(response.data.logo_url);
++            updateTenant({ logo_url: response.data.logo_url });
+             toast.success('Logo mis à jour avec succès');
+         } catch (error: any) {
+             toast.error(error.response?.data?.message || 'Erreur lors du téléchargement du logo');
+-            setLogoPreview(tenant?.logo || null);
++            setLogoPreview(tenant?.logo_url || null);
+         } finally {
+             setUploadingLogo(false);
+         }
+diff --git a/src/types/index.ts b/src/types/index.ts
+index 337647d..7a18201 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -8,6 +8,7 @@ export interface Tenant {
+   website?: string;
+   address?: string;
+   logo?: string;
++  logo_url?: string | null;
+   ifu?: string;
+   rccm?: string;
+   subscription_plan: string;
